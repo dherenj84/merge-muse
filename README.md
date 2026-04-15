@@ -192,6 +192,67 @@ docker compose up --build
 
 The Compose file expects a local `.env` file and exposes port `3000` by default.
 
+## GCP Deployment (Cloud Build + Cloud Run)
+
+For a stable public webhook URL, deploy MergeMuse on Cloud Run and use Cloud Build to build from GitHub.
+
+### 1. Create Artifact Registry repository
+
+```bash
+gcloud artifacts repositories create mergemuse \
+  --repository-format=docker \
+  --location=us-central1
+```
+
+### 2. Create/update runtime secrets
+
+Store sensitive values in Secret Manager (recommended):
+
+- `GITHUB_PRIVATE_KEY`
+- `GITHUB_WEBHOOK_SECRET`
+- `LLM_API_KEY`
+
+Non-secret env vars such as `GITHUB_APP_ID`, `LLM_BASE_URL`, and `LLM_MODEL` can be set directly on the Cloud Run service.
+
+### 3. Add required env vars to Cloud Run
+
+At minimum, ensure the service has:
+
+- `GITHUB_APP_ID`
+- `GITHUB_PRIVATE_KEY`
+- `GITHUB_WEBHOOK_SECRET`
+- `LLM_BASE_URL`
+- `LLM_MODEL`
+- `LLM_API_KEY`
+
+Cloud Run injects `PORT` automatically; MergeMuse will bind to it.
+
+### 4. Build and deploy with Cloud Build
+
+This repo includes [cloudbuild.yaml](cloudbuild.yaml).
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=_REGION=us-central1,_AR_REPO=mergemuse,_SERVICE=merge-muse,_DEPLOY=true,_GITHUB_APP_ID=123456,_LLM_BASE_URL=https://api.openai.com,_LLM_MODEL=gpt-4o-mini,_GITHUB_PRIVATE_KEY_SECRET=GITHUB_PRIVATE_KEY,_GITHUB_WEBHOOK_SECRET_SECRET=GITHUB_WEBHOOK_SECRET,_LLM_API_KEY_SECRET=LLM_API_KEY
+```
+
+If you only want to build and push (no deploy), set `_DEPLOY=false`.
+
+Optional substitutions:
+
+- `_DEFAULT_BASE_BRANCH` default: `main`
+- `_DEFAULT_ACTION_MODE` default: `patch`
+- `_GITHUB_API_URL` for GHES deployments
+
+### 5. Configure GitHub App webhook URL
+
+Use your Cloud Run HTTPS URL with `/webhook`, for example:
+
+`https://merge-muse-xxxxx-uc.a.run.app/webhook`
+
+Make sure the GitHub App webhook secret exactly matches `GITHUB_WEBHOOK_SECRET` configured in Cloud Run.
+
 ## Build And Test
 
 Run the full validation flow:
