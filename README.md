@@ -11,13 +11,13 @@ When GitHub sends a `pull_request` webhook for a merged PR, MergeMuse:
 1. Verifies the webhook signature.
 2. Ignores non-merged PR events.
 3. Deduplicates repeated webhook deliveries in memory.
-4. Fetches the merged PR metadata and changed files.
+4. Fetches the merged PR metadata, changed files, and available repository labels.
 5. Loads optional repo-level settings from `.mergemuse.yml`.
 6. Normalizes the diff into an LLM-friendly summary.
 7. Calls an OpenAI-compatible chat completion endpoint.
 8. Validates the generated title and body.
 9. Applies the rewrite by patching the PR, posting a comment, or logging a dry run.
-10. If assignees are missing, assigns the PR author; if labels are missing, adds a `type:*` label inferred from PR type.
+10. If assignees are missing, assigns the PR author; if labels are missing, it prefers an LLM-selected existing repo label, otherwise matches a standard type label, and only then falls back to creating a `type:*` label.
 11. Emits structured audit logs to stdout.
 
 ## Design Goals
@@ -48,6 +48,7 @@ MergeMuse is intended to run as a GitHub App.
 Recommended minimum permissions:
 
 - `Pull requests: Read and write`
+- `Issues: Read and write`
 - `Contents: Read`
 - `Metadata: Read`
 
@@ -58,6 +59,7 @@ Required webhook subscription:
 Why these are needed:
 
 - MergeMuse reads PR metadata and changed files.
+- It reads available repository labels and can add labels and assignees to the PR when they are missing.
 - It reads `.mergemuse.yml` from the repository root.
 - It updates the PR title/body or posts a PR comment depending on mode.
 
@@ -119,6 +121,13 @@ Mode behavior:
 - `patch`: update the PR title and body in place
 - `comment`: post a suggested rewrite as a PR comment
 - `dry-run`: generate and log the result without mutating the PR
+
+Label and assignee behavior:
+
+- If the PR has no assignees, MergeMuse assigns the PR author.
+- If the PR has no labels, MergeMuse gives the LLM the list of existing repository labels and accepts a suggested label only when it exactly matches one of those labels.
+- If the LLM does not return a valid label, MergeMuse falls back to matching common standard labels such as `bug`, `enhancement`, or `documentation` based on the PR type.
+- If no existing label matches, MergeMuse creates and applies a deterministic fallback label such as `type:feat` or `type:fix`.
 
 ## LLM Compatibility
 
