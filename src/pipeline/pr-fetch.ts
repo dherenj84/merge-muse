@@ -152,7 +152,19 @@ async function fetchRepoConfig(
   } catch (err: unknown) {
     // 404 is expected when the file doesn't exist — fall back to defaults
     if (isNotFoundError(err)) return null;
-    throw err;
+    // For transient/server errors (5xx, ECONNRESET, etc.), log a warning and
+    // fall back to env defaults rather than aborting the pipeline for an
+    // optional config file.
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "repo_config_fetch_failed",
+        owner,
+        repo,
+        error: String(err),
+      }),
+    );
+    return null;
   }
 }
 
