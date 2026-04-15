@@ -53,6 +53,7 @@ function buildLocalMockPrData(payload: PullRequestEvent): PrData {
       authorLogin: payload.repository.owner.login,
       existingAssignees: [],
       existingLabels: [],
+      repoLabels: [],
       headSha: payload.pull_request.head.sha,
       baseSha: payload.pull_request.base.sha,
       mergeCommitSha:

@@ -10,6 +10,7 @@ const metadata: PrMetadata = {
   authorLogin: "example-user",
   existingAssignees: [],
   existingLabels: [],
+  repoLabels: [],
   headSha: "abc",
   baseSha: "def",
   mergeCommitSha: "ghi",
@@ -95,5 +96,55 @@ describe("validateAndFallback", () => {
     const result = validateAndFallback(response, metadata, diff);
     expect(result.usedLlm).toBe(true);
     expect(result.title).toBe("feat: nice title");
+  });
+
+  it("carries a valid LLM label that exists in repoLabels", () => {
+    const metaWithLabels: PrMetadata = {
+      ...metadata,
+      repoLabels: ["bug", "enhancement", "documentation"],
+    };
+    const response = makeLlmResponse(
+      JSON.stringify({
+        title: "fix: resolve null pointer",
+        body: "Fixed it.",
+        label: "bug",
+      }),
+    );
+    const result = validateAndFallback(response, metaWithLabels, diff);
+    expect(result.usedLlm).toBe(true);
+    expect(result.label).toBe("bug");
+  });
+
+  it("discards LLM label that is not in repoLabels", () => {
+    const metaWithLabels: PrMetadata = {
+      ...metadata,
+      repoLabels: ["bug", "enhancement"],
+    };
+    const response = makeLlmResponse(
+      JSON.stringify({
+        title: "fix: resolve null pointer",
+        body: "Fixed it.",
+        label: "invented-label",
+      }),
+    );
+    const result = validateAndFallback(response, metaWithLabels, diff);
+    expect(result.usedLlm).toBe(true);
+    expect(result.label).toBeUndefined();
+  });
+
+  it("matches LLM label case-insensitively and preserves repo casing", () => {
+    const metaWithLabels: PrMetadata = {
+      ...metadata,
+      repoLabels: ["Enhancement"],
+    };
+    const response = makeLlmResponse(
+      JSON.stringify({
+        title: "feat: add dark mode",
+        body: "Added it.",
+        label: "enhancement",
+      }),
+    );
+    const result = validateAndFallback(response, metaWithLabels, diff);
+    expect(result.label).toBe("Enhancement");
   });
 });

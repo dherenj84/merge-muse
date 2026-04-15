@@ -26,8 +26,9 @@ Rules for the body:
 - Maximum 4000 characters.
 
 Output format:
-Return ONLY a valid JSON object on a single line with exactly these two keys:
-{"title":"<rewritten title>","body":"<rewritten body>"}
+Return ONLY a valid JSON object on a single line. Always include "title" and "body".
+If a list of available labels is provided, also include a "label" key containing the single best-matching label name exactly as it appears in the list. Only choose from that list. Omit the "label" key entirely if no label clearly fits.
+{"title":"<rewritten title>","body":"<rewritten body>","label":"<label name>"}
 
 Do NOT include code fences, markdown, explanation, or any other text outside the JSON object.`;
 
@@ -88,6 +89,9 @@ export function buildRewritePrompt(
     ``,
     `### Current Body`,
     metadata.body || "(no description provided)",
+    ...(metadata.repoLabels.length > 0
+      ? [``, `### Available Labels`, metadata.repoLabels.join(", ")]
+      : []),
     ``,
     `### Diff Summary`,
     `Total: +${metadata.additions}/-${metadata.deletions} across ${metadata.changedFiles} file(s)`,
