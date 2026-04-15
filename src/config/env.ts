@@ -15,7 +15,19 @@ const envSchema = z.object({
   // LLM provider
   LLM_BASE_URL: z.string().url("LLM_BASE_URL must be a valid URL"),
   LLM_MODEL: z.string().min(1, "LLM_MODEL is required"),
-  LLM_API_KEY: z.string().min(1, "LLM_API_KEY is required"),
+  LLM_AUTH_MODE: z
+    .enum(["api_key", "entra_client_credentials"])
+    .default("api_key"),
+  LLM_API_KEY: z.string().optional(),
+  LLM_ENTRA_TENANT_ID: z.string().optional(),
+  LLM_ENTRA_CLIENT_ID: z.string().optional(),
+  LLM_ENTRA_CLIENT_SECRET: z.string().optional(),
+  LLM_ENTRA_SCOPE: z.string().optional(),
+  LLM_ENTRA_REFRESH_SKEW_SECONDS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(120),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   LLM_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(8000),
   LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(512),
@@ -43,6 +55,64 @@ const envSchema = z.object({
   LOCAL_MOCK_MODE: z.enum(["true", "false"]).optional(),
 });
 
+const envSchemaWithModeChecks = envSchema.superRefine((data, ctx) => {
+  if (data.LLM_AUTH_MODE === "api_key") {
+    if (!data.LLM_API_KEY || data.LLM_API_KEY.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["LLM_API_KEY"],
+        message: "LLM_API_KEY is required when LLM_AUTH_MODE=api_key",
+      });
+    }
+    return;
+  }
+
+  if (
+    !data.LLM_ENTRA_TENANT_ID ||
+    data.LLM_ENTRA_TENANT_ID.trim().length === 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["LLM_ENTRA_TENANT_ID"],
+      message:
+        "LLM_ENTRA_TENANT_ID is required when LLM_AUTH_MODE=entra_client_credentials",
+    });
+  }
+
+  if (
+    !data.LLM_ENTRA_CLIENT_ID ||
+    data.LLM_ENTRA_CLIENT_ID.trim().length === 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["LLM_ENTRA_CLIENT_ID"],
+      message:
+        "LLM_ENTRA_CLIENT_ID is required when LLM_AUTH_MODE=entra_client_credentials",
+    });
+  }
+
+  if (
+    !data.LLM_ENTRA_CLIENT_SECRET ||
+    data.LLM_ENTRA_CLIENT_SECRET.trim().length === 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["LLM_ENTRA_CLIENT_SECRET"],
+      message:
+        "LLM_ENTRA_CLIENT_SECRET is required when LLM_AUTH_MODE=entra_client_credentials",
+    });
+  }
+
+  if (!data.LLM_ENTRA_SCOPE || data.LLM_ENTRA_SCOPE.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["LLM_ENTRA_SCOPE"],
+      message:
+        "LLM_ENTRA_SCOPE is required when LLM_AUTH_MODE=entra_client_credentials",
+    });
+  }
+});
+
 export type Env = z.infer<typeof envSchema>;
 
 function resolvePrivateKey(raw: string): string {
@@ -56,7 +126,7 @@ function resolvePrivateKey(raw: string): string {
 }
 
 export function loadEnv(): Env & { GITHUB_PRIVATE_KEY: string } {
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = envSchemaWithModeChecks.safeParse(process.env);
   if (!parsed.success) {
     const messages = parsed.error.issues
       .map((i) => `  ${i.path.join(".")}: ${i.message}`)

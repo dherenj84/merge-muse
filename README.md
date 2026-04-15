@@ -74,7 +74,12 @@ Required variables:
 - `GITHUB_WEBHOOK_SECRET`
 - `LLM_BASE_URL`
 - `LLM_MODEL`
-- `LLM_API_KEY`
+
+LLM authentication variables depend on mode:
+
+- `LLM_AUTH_MODE=api_key` (default): requires `LLM_API_KEY`
+- `LLM_AUTH_MODE=entra_client_credentials`: requires
+  `LLM_ENTRA_TENANT_ID`, `LLM_ENTRA_CLIENT_ID`, `LLM_ENTRA_CLIENT_SECRET`, `LLM_ENTRA_SCOPE`
 
 Important optional variables:
 
@@ -88,6 +93,26 @@ Important optional variables:
 - `DIFF_MAX_FILES` default: `100`
 - `GITHUB_API_URL` for GitHub Enterprise Server
 - `LOCAL_MOCK_MODE` default: disabled (`true` enables local synthetic GitHub data path)
+
+### LLM Auth Modes
+
+MergeMuse always sends `Authorization: Bearer <token>` to the configured
+OpenAI-compatible endpoint. You can choose how that bearer token is sourced:
+
+- `api_key` (default): uses `LLM_API_KEY` directly.
+- `entra_client_credentials`: obtains and caches a Microsoft Entra access token
+  using OAuth2 client credentials flow, then refreshes it before expiry.
+
+For `entra_client_credentials`, configure:
+
+- `LLM_ENTRA_TENANT_ID`
+- `LLM_ENTRA_CLIENT_ID`
+- `LLM_ENTRA_CLIENT_SECRET`
+- `LLM_ENTRA_SCOPE` (for example `api://<your-app-id-uri>/.default`)
+
+Optional:
+
+- `LLM_ENTRA_REFRESH_SKEW_SECONDS` default: `120`
 
 ### Private Key Formats
 
@@ -220,7 +245,8 @@ Store sensitive values in Secret Manager (recommended):
 
 - `GITHUB_PRIVATE_KEY`
 - `GITHUB_WEBHOOK_SECRET`
-- `LLM_API_KEY`
+- `LLM_API_KEY` (when `LLM_AUTH_MODE=api_key`)
+- `LLM_ENTRA_CLIENT_SECRET` (when `LLM_AUTH_MODE=entra_client_credentials`)
 
 Non-secret env vars such as `GITHUB_APP_ID`, `LLM_BASE_URL`, and `LLM_MODEL` can be set directly on the Cloud Run service.
 
@@ -233,7 +259,18 @@ At minimum, ensure the service has:
 - `GITHUB_WEBHOOK_SECRET`
 - `LLM_BASE_URL`
 - `LLM_MODEL`
+- `LLM_AUTH_MODE`
+
+If `LLM_AUTH_MODE=api_key`:
+
 - `LLM_API_KEY`
+
+If `LLM_AUTH_MODE=entra_client_credentials`:
+
+- `LLM_ENTRA_TENANT_ID`
+- `LLM_ENTRA_CLIENT_ID`
+- `LLM_ENTRA_SCOPE`
+- `LLM_ENTRA_CLIENT_SECRET`
 
 Cloud Run injects `PORT` automatically; MergeMuse will bind to it.
 
@@ -244,7 +281,15 @@ This repo includes [cloudbuild.yaml](cloudbuild.yaml).
 ```bash
 gcloud builds submit \
   --config cloudbuild.yaml \
-  --substitutions=_REGION=us-central1,_AR_REPO=mergemuse,_SERVICE=merge-muse,_DEPLOY=true,_GITHUB_APP_ID=123456,_LLM_BASE_URL=https://api.openai.com,_LLM_MODEL=gpt-4o-mini,_GITHUB_PRIVATE_KEY_SECRET=GITHUB_PRIVATE_KEY,_GITHUB_WEBHOOK_SECRET_SECRET=GITHUB_WEBHOOK_SECRET,_LLM_API_KEY_SECRET=LLM_API_KEY
+  --substitutions=_REGION=us-central1,_AR_REPO=mergemuse,_SERVICE=merge-muse,_DEPLOY=true,_GITHUB_APP_ID=123456,_LLM_BASE_URL=https://api.openai.com,_LLM_MODEL=gpt-4o-mini,_LLM_AUTH_MODE=api_key,_GITHUB_PRIVATE_KEY_SECRET=GITHUB_PRIVATE_KEY,_GITHUB_WEBHOOK_SECRET_SECRET=GITHUB_WEBHOOK_SECRET,_LLM_API_KEY_SECRET=LLM_API_KEY
+```
+
+Example (Microsoft Entra client credentials mode):
+
+```bash
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=_REGION=us-central1,_AR_REPO=mergemuse,_SERVICE=merge-muse,_DEPLOY=true,_GITHUB_APP_ID=123456,_LLM_BASE_URL=https://your-enterprise-llm-gateway.example.com,_LLM_MODEL=gpt-4o-mini,_LLM_AUTH_MODE=entra_client_credentials,_LLM_ENTRA_TENANT_ID=your-tenant-id,_LLM_ENTRA_CLIENT_ID=your-client-id,_LLM_ENTRA_SCOPE=api://your-enterprise-llm-app-id-uri/.default,_GITHUB_PRIVATE_KEY_SECRET=GITHUB_PRIVATE_KEY,_GITHUB_WEBHOOK_SECRET_SECRET=GITHUB_WEBHOOK_SECRET,_LLM_ENTRA_CLIENT_SECRET_SECRET=LLM_ENTRA_CLIENT_SECRET
 ```
 
 If you only want to build and push (no deploy), set `_DEPLOY=false`.
@@ -254,6 +299,9 @@ Optional substitutions:
 - `_DEFAULT_BASE_BRANCH` default: `main`
 - `_DEFAULT_ACTION_MODE` default: `patch`
 - `_GITHUB_API_URL` for GHES deployments
+- `_LLM_AUTH_MODE` default: `api_key`
+- `_LLM_ENTRA_TENANT_ID`, `_LLM_ENTRA_CLIENT_ID`, `_LLM_ENTRA_SCOPE` (required only for `entra_client_credentials` mode)
+- `_LLM_ENTRA_CLIENT_SECRET_SECRET` default: `LLM_ENTRA_CLIENT_SECRET`
 
 ### 5. Configure GitHub App webhook URL
 

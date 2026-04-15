@@ -1,4 +1,5 @@
 import { getLlmSettings } from "../config/llm-settings";
+import { getLlmBearerToken } from "./llm-auth";
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant";
@@ -36,7 +37,7 @@ interface ChatCompletionRequest {
 
 async function sendCompletionRequest(
   url: string,
-  apiKey: string,
+  bearerToken: string,
   body: ChatCompletionRequest,
   signal: AbortSignal,
 ): Promise<Response> {
@@ -44,11 +45,45 @@ async function sendCompletionRequest(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${bearerToken}`,
     },
     body: JSON.stringify(body),
     signal,
   });
+}
+
+async function sendWithCompatFallback(
+  url: string,
+  bearerToken: string,
+  body: ChatCompletionRequest,
+  signal: AbortSignal,
+): Promise<Response> {
+  let response = await sendCompletionRequest(url, bearerToken, body, signal);
+
+  // Some OpenAI-compatible providers still expect max_tokens.
+  if (!response.ok && response.status === 400) {
+    const firstBody = await response.text().catch(() => "");
+    if (firstBody.includes("max_completion_tokens")) {
+      const fallbackBody: ChatCompletionRequest = {
+        ...body,
+        max_completion_tokens: undefined,
+        max_tokens: body.max_completion_tokens,
+      };
+      response = await sendCompletionRequest(
+        url,
+        bearerToken,
+        fallbackBody,
+        signal,
+      );
+    } else {
+      throw new LlmResponseError(
+        `LLM endpoint returned ${response.status}: ${firstBody.slice(0, 200)}`,
+        response.status,
+      );
+    }
+  }
+
+  return response;
 }
 
 /**
@@ -70,43 +105,37 @@ export async function chatCompletion(
 
   let response: Response;
   try {
-    const primaryBody: ChatCompletionRequest = {
+    const requestBody: ChatCompletionRequest = {
       model: settings.model,
       messages,
       max_completion_tokens: settings.maxOutputTokens,
       temperature: 0.3,
     };
 
-    response = await sendCompletionRequest(
+    let bearerToken = await getLlmBearerToken({ signal: controller.signal });
+
+    response = await sendWithCompatFallback(
       url,
-      settings.apiKey,
-      primaryBody,
+      bearerToken,
+      requestBody,
       controller.signal,
     );
 
-    // Some OpenAI-compatible providers still expect max_tokens.
-    if (!response.ok && response.status === 400) {
-      const firstBody = await response.text().catch(() => "");
-      if (firstBody.includes("max_completion_tokens")) {
-        const fallbackBody: ChatCompletionRequest = {
-          model: settings.model,
-          messages,
-          max_tokens: settings.maxOutputTokens,
-          temperature: 0.3,
-        };
-        response = await sendCompletionRequest(
-          url,
-          settings.apiKey,
-          fallbackBody,
-          controller.signal,
-        );
-      } else {
-        // Re-create a response-like object by throwing now; handled below.
-        throw new LlmResponseError(
-          `LLM endpoint returned ${response.status}: ${firstBody.slice(0, 200)}`,
-          response.status,
-        );
-      }
+    if (
+      !response.ok &&
+      response.status === 401 &&
+      settings.authMode === "entra_client_credentials"
+    ) {
+      bearerToken = await getLlmBearerToken({
+        signal: controller.signal,
+        forceRefresh: true,
+      });
+      response = await sendWithCompatFallback(
+        url,
+        bearerToken,
+        requestBody,
+        controller.signal,
+      );
     }
   } catch (err) {
     if (err instanceof LlmResponseError) {

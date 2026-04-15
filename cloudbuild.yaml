@@ -11,12 +11,17 @@ substitutions:
   _GITHUB_APP_ID: ""
   _LLM_BASE_URL: ""
   _LLM_MODEL: gpt-5.4-mini
+  _LLM_AUTH_MODE: api_key
+  _LLM_ENTRA_TENANT_ID: ""
+  _LLM_ENTRA_CLIENT_ID: ""
+  _LLM_ENTRA_SCOPE: ""
   _DEFAULT_BASE_BRANCH: main
   _DEFAULT_ACTION_MODE: patch
   _GITHUB_API_URL: ""
   _GITHUB_PRIVATE_KEY_SECRET: GITHUB_PRIVATE_KEY
   _GITHUB_WEBHOOK_SECRET_SECRET: GITHUB_WEBHOOK_SECRET
   _LLM_API_KEY_SECRET: LLM_API_KEY
+  _LLM_ENTRA_CLIENT_SECRET_SECRET: LLM_ENTRA_CLIENT_SECRET
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -58,9 +63,34 @@ steps:
           "GITHUB_APP_ID=${_GITHUB_APP_ID}"
           "LLM_BASE_URL=${_LLM_BASE_URL}"
           "LLM_MODEL=${_LLM_MODEL}"
+          "LLM_AUTH_MODE=${_LLM_AUTH_MODE}"
           "DEFAULT_BASE_BRANCH=${_DEFAULT_BASE_BRANCH}"
           "DEFAULT_ACTION_MODE=${_DEFAULT_ACTION_MODE}"
         )
+
+        secrets=(
+          "GITHUB_PRIVATE_KEY=${_GITHUB_PRIVATE_KEY_SECRET}:latest"
+          "GITHUB_WEBHOOK_SECRET=${_GITHUB_WEBHOOK_SECRET_SECRET}:latest"
+        )
+
+        if [[ "${_LLM_AUTH_MODE}" == "api_key" ]]; then
+          secrets+=("LLM_API_KEY=${_LLM_API_KEY_SECRET}:latest")
+        elif [[ "${_LLM_AUTH_MODE}" == "entra_client_credentials" ]]; then
+          if [[ -z "${_LLM_ENTRA_TENANT_ID}" || -z "${_LLM_ENTRA_CLIENT_ID}" || -z "${_LLM_ENTRA_SCOPE}" ]]; then
+            echo "_LLM_ENTRA_TENANT_ID, _LLM_ENTRA_CLIENT_ID, and _LLM_ENTRA_SCOPE must be provided when _LLM_AUTH_MODE=entra_client_credentials."
+            exit 1
+          fi
+
+          env_vars+=(
+            "LLM_ENTRA_TENANT_ID=${_LLM_ENTRA_TENANT_ID}"
+            "LLM_ENTRA_CLIENT_ID=${_LLM_ENTRA_CLIENT_ID}"
+            "LLM_ENTRA_SCOPE=${_LLM_ENTRA_SCOPE}"
+          )
+          secrets+=("LLM_ENTRA_CLIENT_SECRET=${_LLM_ENTRA_CLIENT_SECRET_SECRET}:latest")
+        else
+          echo "Unsupported _LLM_AUTH_MODE=${_LLM_AUTH_MODE}. Use api_key or entra_client_credentials."
+          exit 1
+        fi
 
         if [[ -n "${_GITHUB_API_URL}" ]]; then
           env_vars+=("GITHUB_API_URL=${_GITHUB_API_URL}")
@@ -68,6 +98,7 @@ steps:
 
         IFS=,
         joined_env_vars="${env_vars[*]}"
+        joined_secrets="${secrets[*]}"
         unset IFS
 
         gcloud run deploy "${_SERVICE}" \
@@ -76,7 +107,7 @@ steps:
           --platform managed \
           --allow-unauthenticated \
           --set-env-vars "${joined_env_vars}" \
-          --set-secrets "GITHUB_PRIVATE_KEY=${_GITHUB_PRIVATE_KEY_SECRET}:latest,GITHUB_WEBHOOK_SECRET=${_GITHUB_WEBHOOK_SECRET_SECRET}:latest,LLM_API_KEY=${_LLM_API_KEY_SECRET}:latest" \
+          --set-secrets "${joined_secrets}" \
           --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE}:$BUILD_ID"
 
 images:
