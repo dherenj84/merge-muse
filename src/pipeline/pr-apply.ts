@@ -2,7 +2,11 @@ import { Octokit } from "@octokit/rest";
 import { RewriteResult } from "./rewrite-validator";
 import { ActionMode } from "../config/repository-settings";
 import { PrMetadata } from "./pr-fetch";
-import { inferPrTypeFromTitle, typeLabelForPrType } from "./pr-type";
+import {
+  findMatchingLabel,
+  inferPrTypeFromTitle,
+  typeLabelForPrType,
+} from "./pr-type";
 
 export interface ApplyOutcome {
   mode: ActionMode;
@@ -71,6 +75,7 @@ async function applyMissingAssigneeAndLabel(
   prNumber: number,
   metadata: PrMetadata,
   rewrittenTitle: string,
+  llmLabel: string | undefined,
 ): Promise<Pick<ApplyOutcome, "autoAssigned" | "autoLabeled">> {
   const updates: Pick<ApplyOutcome, "autoAssigned" | "autoLabeled"> = {};
 
@@ -99,14 +104,22 @@ async function applyMissingAssigneeAndLabel(
   }
 
   if (metadata.existingLabels.length === 0) {
+    // 1. Use the label the LLM picked (already validated against repoLabels).
+    // 2. Alias-match against the already-fetched repo label list.
+    // 3. Fall back to creating a new type:<kind> label.
     const type =
       inferPrTypeFromTitle(rewrittenTitle) ??
       inferPrTypeFromTitle(metadata.title) ??
       "chore";
-    const label = typeLabelForPrType(type);
+
+    const existingMatch =
+      llmLabel ?? findMatchingLabel(type, metadata.repoLabels);
+    const label = existingMatch ?? typeLabelForPrType(type);
 
     try {
-      await ensureLabelExists(octokit, owner, repo, label);
+      if (!existingMatch) {
+        await ensureLabelExists(octokit, owner, repo, label);
+      }
       await octokit.issues.addLabels({
         owner,
         repo,
@@ -188,6 +201,7 @@ export async function applyRewrite(
       prNumber,
       metadata,
       result.title,
+      result.label,
     );
 
     return { mode, applied: true, ...updates };
@@ -208,6 +222,7 @@ export async function applyRewrite(
     prNumber,
     metadata,
     result.title,
+    result.label,
   );
 
   return { mode, applied: true, commentUrl: data.html_url, ...updates };

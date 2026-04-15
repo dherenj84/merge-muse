@@ -7,6 +7,8 @@ export interface PrMetadata {
   authorLogin: string;
   existingAssignees: string[];
   existingLabels: string[];
+  /** All label names defined in the repository (not just those on this PR). */
+  repoLabels: string[];
   headSha: string;
   baseSha: string;
   mergeCommitSha: string;
@@ -48,11 +50,13 @@ export async function fetchPrData(
   repo: string,
   prNumber: number,
 ): Promise<PrData> {
-  const [prResponse, filesResponse, configContent] = await Promise.all([
-    octokit.pulls.get({ owner, repo, pull_number: prNumber }),
-    fetchAllFiles(octokit, owner, repo, prNumber),
-    fetchRepoConfig(octokit, owner, repo),
-  ]);
+  const [prResponse, filesResponse, configContent, repoLabelsResponse] =
+    await Promise.all([
+      octokit.pulls.get({ owner, repo, pull_number: prNumber }),
+      fetchAllFiles(octokit, owner, repo, prNumber),
+      fetchRepoConfig(octokit, owner, repo),
+      fetchRepoLabels(octokit, owner, repo),
+    ]);
 
   const pr = prResponse.data;
   const existingLabels = pr.labels.flatMap((label) => {
@@ -82,9 +86,31 @@ export async function fetchPrData(
     additions: pr.additions,
     deletions: pr.deletions,
     changedFiles: pr.changed_files,
+    repoLabels: repoLabelsResponse,
   };
 
   return { metadata, files: filesResponse, repoConfigContent: configContent };
+}
+
+async function fetchRepoLabels(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+): Promise<string[]> {
+  if (!("issues" in octokit) || octokit.issues === undefined) {
+    return [];
+  }
+
+  try {
+    const response = await octokit.issues.listLabelsForRepo({
+      owner,
+      repo,
+      per_page: 100,
+    });
+    return response.data.map((label) => label.name);
+  } catch {
+    return [];
+  }
 }
 
 async function fetchAllFiles(

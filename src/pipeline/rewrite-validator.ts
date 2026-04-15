@@ -5,6 +5,8 @@ import { PrMetadata } from "./pr-fetch";
 export interface RewriteResult {
   title: string;
   body: string;
+  /** Label selected by the LLM from the repo's available labels, if any. */
+  label?: string;
   /** true when the LLM output was used; false when deterministic fallback was applied */
   usedLlm: boolean;
   /** reason the LLM output was rejected, if applicable */
@@ -24,7 +26,9 @@ function containsSecret(text: string): boolean {
   return SECRET_PATTERNS.some((re) => re.test(text));
 }
 
-function parseLlmJson(raw: string): { title: string; body: string } | null {
+function parseLlmJson(
+  raw: string,
+): { title: string; body: string; label?: string } | null {
   // Strip markdown code fences if the model wrapped its output despite instructions
   const stripped = raw
     .replace(/^```(?:json)?\s*/i, "")
@@ -39,7 +43,8 @@ function parseLlmJson(raw: string): { title: string; body: string } | null {
       typeof parsed.title === "string" &&
       typeof parsed.body === "string"
     ) {
-      return { title: parsed.title, body: parsed.body };
+      const label = typeof parsed.label === "string" ? parsed.label : undefined;
+      return { title: parsed.title, body: parsed.body, label };
     }
     return null;
   } catch {
@@ -124,6 +129,18 @@ function buildFallbackBody(metadata: PrMetadata, diff: NormalizedDiff): string {
   return lines.join("\n");
 }
 
+/**
+ * Returns the canonical repo label that matches `candidate` (case-insensitive),
+ * or undefined if the candidate is absent or not in the repo label list.
+ */
+function resolveLabel(
+  candidate: string | undefined,
+  repoLabels: string[],
+): string | undefined {
+  if (!candidate || repoLabels.length === 0) return undefined;
+  return repoLabels.find((l) => l.toLowerCase() === candidate.toLowerCase());
+}
+
 export function validateAndFallback(
   llmResponse: LlmResponse | null,
   metadata: PrMetadata,
@@ -165,6 +182,9 @@ export function validateAndFallback(
     return {
       title: parsed.title.trim(),
       body: parsed.body.trim(),
+      // Only keep the label if it matches one of the repo's known labels
+      // (case-insensitive). Preserve the original casing from the repo list.
+      label: resolveLabel(parsed.label, metadata.repoLabels),
       usedLlm: true,
     };
   }
