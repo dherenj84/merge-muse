@@ -2,7 +2,7 @@
 
 MergeMuse is a self-hosted GitHub App that reviews merged pull requests and rewrites the PR title and body so they better match the actual code changes.
 
-It is designed for teams that want accurate PR metadata after merge without introducing a database or a hosted control plane.
+It is designed for teams that want an AI powered and accurate PR metadata after merge without introducing a database or a hosted control plane.
 
 ## What It Does
 
