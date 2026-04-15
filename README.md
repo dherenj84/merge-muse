@@ -17,7 +17,8 @@ When GitHub sends a `pull_request` webhook for a merged PR, MergeMuse:
 7. Calls an OpenAI-compatible chat completion endpoint.
 8. Validates the generated title and body.
 9. Applies the rewrite by patching the PR, posting a comment, or logging a dry run.
-10. Emits structured audit logs to stdout.
+10. If assignees are missing, assigns the PR author; if labels are missing, adds a `type:*` label inferred from PR type.
+11. Emits structured audit logs to stdout.
 
 ## Design Goals
 
