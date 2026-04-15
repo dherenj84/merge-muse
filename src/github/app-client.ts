@@ -36,13 +36,24 @@ async function getApp(): Promise<GitHubApp> {
  * Returns an Octokit client authenticated as the installation identified by
  * installationId. The token is automatically scoped to the repos the app is
  * installed on and expires after 1 hour.
+ *
+ * We extract the short-lived installation token from the App's Octokit and
+ * construct a plain @octokit/rest Octokit with it. This avoids the REST
+ * endpoint namespace mismatch between @octokit/app (methods under .rest.*)
+ * and @octokit/rest (methods directly on the instance).
  */
 export async function getInstallationOctokit(
   installationId: number,
 ): Promise<Octokit> {
   const app = await getApp();
-  const octokit = await app.getInstallationOctokit(installationId);
-  return octokit as unknown as Octokit;
+  const appOctokit = await app.getInstallationOctokit(installationId);
+  const { token } = (await appOctokit.auth({ type: "installation" })) as {
+    token: string;
+  };
+  return new Octokit({
+    auth: token,
+    ...(env.GITHUB_API_URL ? { baseUrl: env.GITHUB_API_URL } : {}),
+  });
 }
 
 export { getApp };
