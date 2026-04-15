@@ -55,10 +55,7 @@ export async function fetchPrData(
       octokit.pulls.get({ owner, repo, pull_number: prNumber }),
       fetchAllFiles(octokit, owner, repo, prNumber),
       fetchRepoConfig(octokit, owner, repo),
-      octokit.issues
-        .listLabelsForRepo({ owner, repo, per_page: 100 })
-        .then((r) => r.data.map((l) => l.name))
-        .catch(() => [] as string[]),
+      fetchRepoLabels(octokit, owner, repo),
     ]);
 
   const pr = prResponse.data;
@@ -93,6 +90,27 @@ export async function fetchPrData(
   };
 
   return { metadata, files: filesResponse, repoConfigContent: configContent };
+}
+
+async function fetchRepoLabels(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+): Promise<string[]> {
+  if (!("issues" in octokit) || octokit.issues === undefined) {
+    return [];
+  }
+
+  try {
+    const response = await octokit.issues.listLabelsForRepo({
+      owner,
+      repo,
+      per_page: 100,
+    });
+    return response.data.map((label) => label.name);
+  } catch {
+    return [];
+  }
 }
 
 async function fetchAllFiles(
