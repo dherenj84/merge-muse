@@ -50,6 +50,9 @@ function buildLocalMockPrData(payload: PullRequestEvent): PrData {
       number: payload.pull_request.number,
       title: payload.pull_request.title,
       body: payload.pull_request.body ?? "",
+      authorLogin: payload.repository.owner.login,
+      existingAssignees: [],
+      existingLabels: [],
       headSha: payload.pull_request.head.sha,
       baseSha: payload.pull_request.base.sha,
       mergeCommitSha:
@@ -194,7 +197,13 @@ export async function processMergedPr(
   );
 
   // ── 7. Apply rewrite ──────────────────────────────────────────────────────
-  let applyOutcome: { mode: ActionMode; applied: boolean; commentUrl?: string };
+  let applyOutcome: {
+    mode: ActionMode;
+    applied: boolean;
+    commentUrl?: string;
+    autoAssigned?: string;
+    autoLabeled?: string;
+  };
   if (localMockMode) {
     applyOutcome = { mode: "dry-run", applied: false };
   } else {
@@ -204,6 +213,7 @@ export async function processMergedPr(
         owner,
         repo,
         prNumber,
+        prData.metadata,
         rewriteResult,
         settings.actionMode,
       );
@@ -232,6 +242,8 @@ export async function processMergedPr(
     applied: applyOutcome.applied,
     commentUrl: applyOutcome.commentUrl,
     usedLlm: rewriteResult.usedLlm,
+    autoAssigned: applyOutcome.autoAssigned,
+    autoLabeled: applyOutcome.autoLabeled,
     rejectionReason: rewriteResult.rejectionReason,
     llmError,
     inputTokens: llmResponse?.inputTokens,

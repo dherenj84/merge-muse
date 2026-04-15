@@ -10,6 +10,8 @@ export interface AuditRecord {
   actionMode?: ActionMode;
   applied?: boolean;
   commentUrl?: string;
+  autoAssigned?: string;
+  autoLabeled?: string;
   rejectionReason?: string;
   llmError?: string;
   inputTokens?: number;

@@ -4,6 +4,9 @@ export interface PrMetadata {
   number: number;
   title: string;
   body: string;
+  authorLogin: string;
+  existingAssignees: string[];
+  existingLabels: string[];
   headSha: string;
   baseSha: string;
   mergeCommitSha: string;
@@ -52,11 +55,26 @@ export async function fetchPrData(
   ]);
 
   const pr = prResponse.data;
+  const existingLabels = pr.labels.flatMap((label) => {
+    if (typeof label === "string") return [label];
+    if (
+      typeof label === "object" &&
+      label !== null &&
+      "name" in label &&
+      typeof label.name === "string"
+    ) {
+      return [label.name];
+    }
+    return [];
+  });
 
   const metadata: PrMetadata = {
     number: pr.number,
     title: pr.title,
     body: pr.body ?? "",
+    authorLogin: pr.user?.login ?? owner,
+    existingAssignees: (pr.assignees ?? []).map((a) => a.login),
+    existingLabels,
     headSha: pr.head.sha,
     baseSha: pr.base.sha,
     mergeCommitSha: pr.merge_commit_sha ?? pr.head.sha,
