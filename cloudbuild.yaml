@@ -1,0 +1,83 @@
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: mergemuse
+  _IMAGE: merge-muse
+  _SERVICE: merge-muse
+  _DEPLOY: "true"
+  _GITHUB_APP_ID: ""
+  _LLM_BASE_URL: ""
+  _LLM_MODEL: gpt-5.4-mini
+  _DEFAULT_BASE_BRANCH: main
+  _DEFAULT_ACTION_MODE: patch
+  _GITHUB_API_URL: ""
+  _GITHUB_PRIVATE_KEY_SECRET: GITHUB_PRIVATE_KEY
+  _GITHUB_WEBHOOK_SECRET_SECRET: GITHUB_WEBHOOK_SECRET
+  _LLM_API_KEY_SECRET: LLM_API_KEY
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: Build Image
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE}:$BUILD_ID
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: Push Image
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE}:$BUILD_ID
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: Deploy Cloud Run
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        if [[ "${_DEPLOY}" != "true" ]]; then
+          echo "Skipping deploy because _DEPLOY=${_DEPLOY}"
+          exit 0
+        fi
+
+        if [[ -z "${_GITHUB_APP_ID}" ]]; then
+          echo "_GITHUB_APP_ID must be provided (Cloud Build substitution)."
+          exit 1
+        fi
+
+        if [[ -z "${_LLM_BASE_URL}" ]]; then
+          echo "_LLM_BASE_URL must be provided (Cloud Build substitution)."
+          exit 1
+        fi
+
+        env_vars=(
+          "GITHUB_APP_ID=${_GITHUB_APP_ID}"
+          "LLM_BASE_URL=${_LLM_BASE_URL}"
+          "LLM_MODEL=${_LLM_MODEL}"
+          "DEFAULT_BASE_BRANCH=${_DEFAULT_BASE_BRANCH}"
+          "DEFAULT_ACTION_MODE=${_DEFAULT_ACTION_MODE}"
+        )
+
+        if [[ -n "${_GITHUB_API_URL}" ]]; then
+          env_vars+=("GITHUB_API_URL=${_GITHUB_API_URL}")
+        fi
+
+        IFS=,
+        joined_env_vars="${env_vars[*]}"
+        unset IFS
+
+        gcloud run deploy "${_SERVICE}" \
+          --project "$PROJECT_ID" \
+          --region "${_REGION}" \
+          --platform managed \
+          --allow-unauthenticated \
+          --set-env-vars "${joined_env_vars}" \
+          --set-secrets "GITHUB_PRIVATE_KEY=${_GITHUB_PRIVATE_KEY_SECRET}:latest,GITHUB_WEBHOOK_SECRET=${_GITHUB_WEBHOOK_SECRET_SECRET}:latest,LLM_API_KEY=${_LLM_API_KEY_SECRET}:latest" \
+          --image "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE}:$BUILD_ID"
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE}:$BUILD_ID
