@@ -1,0 +1,15 @@
+# Example repository-level MergeMuse settings.
+# Copy this file to `.mergemuse.yml` in a target repository root to override
+# the app-wide defaults for that repository.
+
+# Set to false to disable MergeMuse for the repository.
+enabled: true
+
+# Only merged pull requests targeting this branch will be processed.
+base_branch: main
+
+# How MergeMuse should apply its rewrite.
+# patch   = update the PR title/body directly
+# comment = post a suggested rewrite as a PR comment
+# dry-run = generate and log only
+action_mode: patch
