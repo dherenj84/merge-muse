@@ -24,7 +24,7 @@ app.use((_req, res) => {
 // ── Start server ──────────────────────────────────────────────────────────────
 import { env } from "./config/env";
 
-const { PORT, HOST } = env;
+const { PORT, HOST, LLM_AUTH_MODE } = env;
 
 app.listen(PORT, HOST, () => {
   console.log(
@@ -33,6 +33,7 @@ app.listen(PORT, HOST, () => {
       event: "server_started",
       host: HOST,
       port: PORT,
+      llmAuthMode: LLM_AUTH_MODE,
     }),
   );
 });
