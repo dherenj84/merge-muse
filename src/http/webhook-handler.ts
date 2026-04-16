@@ -1,7 +1,7 @@
 import { Router, Request, Response, raw } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "../config/env";
-import { isDuplicate } from "./dedup-cache";
+import { completeDelivery, failDelivery, startDelivery } from "./dedup-cache";
 import { processMergedPr } from "../pipeline/pr-processor";
 
 export const webhookRouter = Router();
@@ -45,14 +45,7 @@ webhookRouter.post(
       return;
     }
 
-    // ── 3. Idempotency check ──────────────────────────────────────────────────
-    const deliveryId = req.headers["x-github-delivery"];
-    if (typeof deliveryId === "string" && isDuplicate(deliveryId)) {
-      res.status(200).json({ skipped: true, reason: "duplicate delivery" });
-      return;
-    }
-
-    // ── 4. Parse payload ──────────────────────────────────────────────────────
+    // ── 3. Parse payload ──────────────────────────────────────────────────────
     let payload: PullRequestEvent;
     try {
       payload = JSON.parse(body.toString("utf8")) as PullRequestEvent;
@@ -61,28 +54,47 @@ webhookRouter.post(
       return;
     }
 
-    // ── 5. Merged PR check ────────────────────────────────────────────────────
+    // ── 4. Merged PR check ────────────────────────────────────────────────────
     if (payload.action !== "closed" || !payload.pull_request.merged) {
       res.status(200).json({ skipped: true, reason: "PR not merged" });
       return;
+    }
+
+    // ── 5. Idempotency check (for merged PR processing) ──────────────────────
+    const deliveryId = req.headers["x-github-delivery"];
+    if (typeof deliveryId === "string") {
+      const startResult = startDelivery(deliveryId);
+      if (startResult === "duplicate") {
+        res.status(200).json({ skipped: true, reason: "duplicate delivery" });
+        return;
+      }
     }
 
     // Acknowledge immediately — GitHub expects a timely 2xx response
     res.status(202).json({ accepted: true });
 
     // ── 6. Async processing (non-blocking) ────────────────────────────────────
-    processMergedPr(payload).catch((err: unknown) => {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          event: "processing_error",
-          delivery: deliveryId,
-          pr: payload.pull_request.number,
-          repo: payload.repository.full_name,
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
-    });
+    processMergedPr(payload)
+      .then(() => {
+        if (typeof deliveryId === "string") {
+          completeDelivery(deliveryId);
+        }
+      })
+      .catch((err: unknown) => {
+        if (typeof deliveryId === "string") {
+          failDelivery(deliveryId);
+        }
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "processing_error",
+            delivery: deliveryId,
+            pr: payload.pull_request.number,
+            repo: payload.repository.full_name,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      });
   },
 );
 

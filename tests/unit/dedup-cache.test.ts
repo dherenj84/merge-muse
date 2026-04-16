@@ -1,21 +1,32 @@
-import { isDuplicate } from "../../src/http/dedup-cache";
+import {
+  completeDelivery,
+  failDelivery,
+  startDelivery,
+} from "../../src/http/dedup-cache";
 
-describe("isDuplicate", () => {
-  it("returns false on first call for a delivery ID", () => {
+describe("delivery lifecycle dedup", () => {
+  it("returns started on first call for a delivery ID", () => {
     const id = `test-delivery-${Math.random()}`;
-    expect(isDuplicate(id)).toBe(false);
+    expect(startDelivery(id)).toBe("started");
   });
 
-  it("returns true on subsequent calls for the same delivery ID", () => {
+  it("returns duplicate while the same delivery is in-flight", () => {
     const id = `test-delivery-${Math.random()}`;
-    isDuplicate(id); // first call — marks as seen
-    expect(isDuplicate(id)).toBe(true);
+    startDelivery(id);
+    expect(startDelivery(id)).toBe("duplicate");
   });
 
-  it("treats different delivery IDs independently", () => {
-    const id1 = `test-delivery-${Math.random()}`;
-    const id2 = `test-delivery-${Math.random()}`;
-    isDuplicate(id1);
-    expect(isDuplicate(id2)).toBe(false);
+  it("allows retry after a failed delivery", () => {
+    const id = `test-delivery-${Math.random()}`;
+    expect(startDelivery(id)).toBe("started");
+    failDelivery(id);
+    expect(startDelivery(id)).toBe("started");
+  });
+
+  it("keeps completed deliveries deduplicated", () => {
+    const id = `test-delivery-${Math.random()}`;
+    expect(startDelivery(id)).toBe("started");
+    completeDelivery(id);
+    expect(startDelivery(id)).toBe("duplicate");
   });
 });
