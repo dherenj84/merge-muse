@@ -80,17 +80,53 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function retryGitHubRead<T>(fn: () => Promise<T>): Promise<T> {
+async function retryGitHubRead<T>(
+  operation: string,
+  fn: () => Promise<T>,
+): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await fn();
+      const result = await fn();
+      if (attempt > 0) {
+        console.info(
+          JSON.stringify({
+            level: "info",
+            event: "github_read_retry_succeeded",
+            operation,
+            attempts: attempt + 1,
+          }),
+        );
+      }
+      return result;
     } catch (err) {
       if (
         !isRetryableGitHubReadError(err) ||
         attempt >= RETRY_DELAYS_MS.length
       ) {
+        if (attempt > 0) {
+          console.info(
+            JSON.stringify({
+              level: "info",
+              event: "github_read_retry_exhausted",
+              operation,
+              attempts: attempt + 1,
+              error: String(err),
+            }),
+          );
+        }
         throw err;
       }
+      console.info(
+        JSON.stringify({
+          level: "info",
+          event: "github_read_retry",
+          operation,
+          attempt: attempt + 1,
+          maxAttempts: RETRY_DELAYS_MS.length + 1,
+          delayMs: RETRY_DELAYS_MS[attempt],
+          error: String(err),
+        }),
+      );
       await wait(RETRY_DELAYS_MS[attempt]);
     }
   }
@@ -108,7 +144,7 @@ export async function fetchPrData(
 ): Promise<PrData> {
   const [prResponse, filesResponse, configContent, repoLabelsResponse] =
     await Promise.all([
-      retryGitHubRead(() =>
+      retryGitHubRead("pulls.get", () =>
         octokit.pulls.get({ owner, repo, pull_number: prNumber }),
       ),
       fetchAllFiles(octokit, owner, repo, prNumber),
@@ -160,7 +196,7 @@ async function fetchRepoLabels(
   }
 
   try {
-    const response = await retryGitHubRead(() =>
+    const response = await retryGitHubRead("issues.listLabelsForRepo", () =>
       octokit.issues.listLabelsForRepo({
         owner,
         repo,
@@ -184,7 +220,7 @@ async function fetchAllFiles(
   const perPage = 100;
 
   for (;;) {
-    const response = await retryGitHubRead(() =>
+    const response = await retryGitHubRead("pulls.listFiles", () =>
       octokit.pulls.listFiles({
         owner,
         repo,
@@ -218,7 +254,7 @@ async function fetchRepoConfig(
   repo: string,
 ): Promise<string | null> {
   try {
-    const response = await retryGitHubRead(() =>
+    const response = await retryGitHubRead("repos.getContent", () =>
       octokit.repos.getContent({
         owner,
         repo,
