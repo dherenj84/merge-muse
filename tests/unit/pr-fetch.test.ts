@@ -8,15 +8,19 @@ function makeOctokit(overrides: {
 }): Octokit {
   return {
     pulls: {
-      get: overrides.pullsGet ?? jest.fn().mockResolvedValue({ data: makePr() }),
+      get:
+        overrides.pullsGet ?? jest.fn().mockResolvedValue({ data: makePr() }),
       listFiles:
-        overrides.pullsListFiles ??
-        jest.fn().mockResolvedValue({ data: [] }),
+        overrides.pullsListFiles ?? jest.fn().mockResolvedValue({ data: [] }),
     },
     repos: {
       getContent:
         overrides.reposGetContent ??
-        jest.fn().mockRejectedValue(Object.assign(new Error("Not Found"), { status: 404 })),
+        jest
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("Not Found"), { status: 404 }),
+          ),
     },
   } as unknown as Octokit;
 }
@@ -50,7 +54,9 @@ describe("fetchPrData / fetchRepoConfig", () => {
   });
 
   it("falls back to null repoConfigContent on a 500 server error", async () => {
-    const serverErr = Object.assign(new Error("Internal Server Error"), { status: 500 });
+    const serverErr = Object.assign(new Error("Internal Server Error"), {
+      status: 500,
+    });
     const octokit = makeOctokit({
       reposGetContent: jest.fn().mockRejectedValue(serverErr),
     });
@@ -86,5 +92,31 @@ describe("fetchPrData / fetchRepoConfig", () => {
     await fetchPrData(octokit, "owner", "repo", 1);
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  it("retries transient listFiles failures and succeeds", async () => {
+    const transientErr = Object.assign(
+      new Error("HttpError: other side closed"),
+      {
+        status: 500,
+      },
+    );
+    const pullsListFiles = jest
+      .fn()
+      .mockRejectedValueOnce(transientErr)
+      .mockResolvedValueOnce({ data: [] });
+
+    const octokit = makeOctokit({
+      pullsListFiles,
+      reposGetContent: jest
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error("Not Found"), { status: 404 }),
+        ),
+    });
+
+    const result = await fetchPrData(octokit, "owner", "repo", 1);
+    expect(result.metadata.number).toBe(1);
+    expect(pullsListFiles).toHaveBeenCalledTimes(2);
   });
 });

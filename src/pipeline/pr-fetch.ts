@@ -40,6 +40,62 @@ export interface PrData {
   repoConfigContent: string | null;
 }
 
+const RETRY_DELAYS_MS = [250, 750];
+
+function isRetryableGitHubReadError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+
+  const maybeStatus =
+    "status" in err && typeof (err as { status?: unknown }).status === "number"
+      ? (err as { status: number }).status
+      : undefined;
+  if (maybeStatus !== undefined) {
+    // Retry transient server-side errors; avoid retrying client errors.
+    return maybeStatus >= 500;
+  }
+
+  const maybeCode =
+    "code" in err && typeof (err as { code?: unknown }).code === "string"
+      ? (err as { code: string }).code
+      : undefined;
+  if (
+    maybeCode === "ECONNRESET" ||
+    maybeCode === "ETIMEDOUT" ||
+    maybeCode === "ECONNABORTED" ||
+    maybeCode === "EPIPE"
+  ) {
+    return true;
+  }
+
+  const message = String(err).toLowerCase();
+  return (
+    message.includes("other side closed") ||
+    message.includes("socket hang up") ||
+    message.includes("connection reset") ||
+    message.includes("timed out")
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function retryGitHubRead<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (
+        !isRetryableGitHubReadError(err) ||
+        attempt >= RETRY_DELAYS_MS.length
+      ) {
+        throw err;
+      }
+      await wait(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 /**
  * Fetches merged PR metadata, changed files, and the optional .mergemuse.yml
  * config from the repo's default branch.
@@ -52,7 +108,9 @@ export async function fetchPrData(
 ): Promise<PrData> {
   const [prResponse, filesResponse, configContent, repoLabelsResponse] =
     await Promise.all([
-      octokit.pulls.get({ owner, repo, pull_number: prNumber }),
+      retryGitHubRead(() =>
+        octokit.pulls.get({ owner, repo, pull_number: prNumber }),
+      ),
       fetchAllFiles(octokit, owner, repo, prNumber),
       fetchRepoConfig(octokit, owner, repo),
       fetchRepoLabels(octokit, owner, repo),
@@ -102,11 +160,13 @@ async function fetchRepoLabels(
   }
 
   try {
-    const response = await octokit.issues.listLabelsForRepo({
-      owner,
-      repo,
-      per_page: 100,
-    });
+    const response = await retryGitHubRead(() =>
+      octokit.issues.listLabelsForRepo({
+        owner,
+        repo,
+        per_page: 100,
+      }),
+    );
     return response.data.map((label) => label.name);
   } catch {
     return [];
@@ -124,13 +184,15 @@ async function fetchAllFiles(
   const perPage = 100;
 
   for (;;) {
-    const response = await octokit.pulls.listFiles({
-      owner,
-      repo,
-      pull_number: prNumber,
-      per_page: perPage,
-      page,
-    });
+    const response = await retryGitHubRead(() =>
+      octokit.pulls.listFiles({
+        owner,
+        repo,
+        pull_number: prNumber,
+        per_page: perPage,
+        page,
+      }),
+    );
 
     for (const f of response.data) {
       files.push({
@@ -156,11 +218,13 @@ async function fetchRepoConfig(
   repo: string,
 ): Promise<string | null> {
   try {
-    const response = await octokit.repos.getContent({
-      owner,
-      repo,
-      path: ".mergemuse.yml",
-    });
+    const response = await retryGitHubRead(() =>
+      octokit.repos.getContent({
+        owner,
+        repo,
+        path: ".mergemuse.yml",
+      }),
+    );
 
     const data = response.data;
     if ("content" in data && typeof data.content === "string") {

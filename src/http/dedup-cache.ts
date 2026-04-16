@@ -2,24 +2,45 @@ import { LRUCache } from "lru-cache";
 import { env } from "../config/env";
 
 /**
- * In-process LRU cache that tracks recently handled X-Hub-Delivery IDs.
- * Prevents redundant LLM calls when GitHub retries a delivery within the
- * same process lifetime. Bounded by max entry count and per-entry TTL so it
- * cannot grow unbounded regardless of traffic volume.
+ * In-process caches that track webhook delivery lifecycle by X-Hub-Delivery ID.
+ * - inFlightCache prevents concurrent duplicate processing of the same delivery
+ * - completedCache prevents reprocessing deliveries that already succeeded
+ *
+ * Both are bounded by max entry count and TTL, so memory use remains capped.
  */
-const dedupCache = new LRUCache<string, true>({
+const inFlightCache = new LRUCache<string, true>({
   max: env.DEDUP_CACHE_MAX,
   ttl: env.DEDUP_CACHE_TTL_MS,
 });
 
+const completedCache = new LRUCache<string, true>({
+  max: env.DEDUP_CACHE_MAX,
+  ttl: env.DEDUP_CACHE_TTL_MS,
+});
+
+export type DeliveryStartResult = "started" | "duplicate";
+
 /**
- * Returns true if this delivery ID has already been processed and marks it
- * as seen. Returns false (and marks it) on the first call for a given ID.
+ * Attempts to start processing for this delivery ID.
+ * Returns:
+ * - "started" on first process attempt
+ * - "duplicate" if already in-flight or already completed
  */
-export function isDuplicate(deliveryId: string): boolean {
-  if (dedupCache.has(deliveryId)) {
-    return true;
+export function startDelivery(deliveryId: string): DeliveryStartResult {
+  if (inFlightCache.has(deliveryId) || completedCache.has(deliveryId)) {
+    return "duplicate";
   }
-  dedupCache.set(deliveryId, true);
-  return false;
+  inFlightCache.set(deliveryId, true);
+  return "started";
+}
+
+/** Marks a delivery as successfully processed. */
+export function completeDelivery(deliveryId: string): void {
+  inFlightCache.delete(deliveryId);
+  completedCache.set(deliveryId, true);
+}
+
+/** Marks a delivery as failed so future redeliveries can retry it. */
+export function failDelivery(deliveryId: string): void {
+  inFlightCache.delete(deliveryId);
 }
