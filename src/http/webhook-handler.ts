@@ -14,6 +14,13 @@ export const webhookRouter = Router();
 // Parse raw body so we can verify the HMAC signature before touching contents
 webhookRouter.use(raw({ type: "application/json", limit: "25mb" }));
 
+function sendMethodNotAllowed(res: Response): void {
+  res.setHeader("Allow", "POST");
+  sendWebhookContractResponse(res, 405, {
+    error: normalizeContractError("Method not allowed"),
+  });
+}
+
 webhookRouter.post(
   "/webhook",
   async (req: Request, res: Response): Promise<void> => {
@@ -106,6 +113,14 @@ webhookRouter.post(
       });
   },
 );
+
+webhookRouter.options("/webhook", (_req: Request, res: Response) => {
+  sendMethodNotAllowed(res);
+});
+
+webhookRouter.all("/webhook", (_req: Request, res: Response) => {
+  sendMethodNotAllowed(res);
+});
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

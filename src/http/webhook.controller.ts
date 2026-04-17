@@ -208,6 +208,7 @@ export class WebhookController extends Controller {
   @Response<ErrorResponse>("400", "Invalid request")
   @Response<ErrorResponse>("401", "Invalid signature")
   @Response<ErrorResponse>("403", "Forbidden")
+  @Response<ErrorResponse>("405", "Method not allowed")
   @Response<ErrorResponse>("406", "Not acceptable")
   @Response<ErrorResponse>("415", "Unsupported media type")
   @Response<ErrorResponse>("429", "Too many requests")

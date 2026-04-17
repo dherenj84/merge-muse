@@ -20,9 +20,9 @@
     ],
     "securityDefinitions": {
       "ApiKeyAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "HMAC-SHA256",
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-hub-signature-256",
         "description": "Inbound webhook signature verification is enforced via X-Hub-Signature-256."
       }
     }

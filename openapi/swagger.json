@@ -323,9 +323,9 @@
 		},
 		"securitySchemes": {
 			"ApiKeyAuth": {
-				"type": "http",
-				"scheme": "bearer",
-				"bearerFormat": "HMAC-SHA256",
+				"type": "apiKey",
+				"in": "header",
+				"name": "x-hub-signature-256",
 				"description": "Inbound webhook signature verification is enforced via X-Hub-Signature-256."
 			}
 		}
@@ -393,6 +393,16 @@
 					},
 					"403": {
 						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"405": {
+						"description": "Method not allowed",
 						"content": {
 							"application/json": {
 								"schema": {
