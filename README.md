@@ -48,6 +48,8 @@ MergeMuse supports OpenAPI contract compliance at runtime, not only documentatio
 
 - The webhook contract is generated to `openapi/swagger.json` and served at `GET /openapi.json`.
 - The webhook handler enforces request constraints from the generated OpenAPI schema (headers, media type, and request body schema constraints).
+- Runtime exception for GitHub compatibility: when a request is from `GitHub-Hookshot/*` and has a valid `X-Hub-Signature-256`, extra JSON properties in the webhook body are tolerated so full GitHub payloads are accepted.
+- Outside that signed Hookshot path, request-body validation remains strict against the generated schema.
 - Outbound webhook responses are validated against documented response schemas before being returned.
 - Startup is fail-fast: the service will not boot if the generated OpenAPI webhook contract is unavailable.
 
@@ -88,6 +90,8 @@ You should configure your own security scheme to match your deployment and threa
 Typical webhook deployments use signature verification with strict transport controls, but implementation choices vary by environment. Keep your documented scheme, runtime enforcement, and gateway/infrastructure controls consistent.
 
 If you customize the security scheme, update [tsoa.json](tsoa.json), regenerate the spec (`npm run openapi:gen`), and re-run your compliance scan.
+
+Header format note: `X-Hub-Signature-256` is validated as `sha256=` plus 64 lowercase hex characters.
 
 ## Self-Hosted Onboarding
 

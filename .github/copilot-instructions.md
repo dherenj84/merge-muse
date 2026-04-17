@@ -91,6 +91,11 @@ When making behavioral changes:
 - keep `npm test` and `npm run build` passing on Node 24
 - prefer testing normalization, validation, and config parsing logic directly
 
+For documentation-only or other non-code changes (for example `README.md`, docs, comments, or markdown-only edits):
+
+- do not run Node scripts, tests, or build commands by default
+- do not run `npm test`, `npm run build`, or `npm run openapi:gen` unless explicitly requested
+
 ## Documentation Expectations
 
 If behavior, configuration, setup, or deployment changes, update `README.md` and `.env.example` in the same change.
