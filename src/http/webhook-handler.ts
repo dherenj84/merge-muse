@@ -3,6 +3,11 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "../config/env";
 import { completeDelivery, failDelivery, startDelivery } from "./dedup-cache";
 import { processMergedPr } from "../pipeline/pr-processor";
+import {
+  normalizeContractError,
+  sendWebhookContractResponse,
+  validateWebhookRequestAgainstContract,
+} from "./webhook-contract";
 
 export const webhookRouter = Router();
 
@@ -12,10 +17,21 @@ webhookRouter.use(raw({ type: "application/json", limit: "25mb" }));
 webhookRouter.post(
   "/webhook",
   async (req: Request, res: Response): Promise<void> => {
+    // ── 0. Contract validation (request shape from OpenAPI) ─────────────────
+    const contractValidation = validateWebhookRequestAgainstContract(req);
+    if (!contractValidation.ok) {
+      sendWebhookContractResponse(res, contractValidation.reason.status, {
+        error: normalizeContractError(contractValidation.reason.error),
+      });
+      return;
+    }
+
     // ── 1. Signature verification ─────────────────────────────────────────────
     const sigHeader = req.headers["x-hub-signature-256"];
     if (typeof sigHeader !== "string") {
-      res.status(400).json({ error: "Missing X-Hub-Signature-256" });
+      sendWebhookContractResponse(res, 400, {
+        error: normalizeContractError("Missing X-Hub-Signature-256"),
+      });
       return;
     }
 
@@ -32,31 +48,21 @@ webhookRouter.post(
     }
 
     if (!sigMatch) {
-      res.status(401).json({ error: "Invalid signature" });
-      return;
-    }
-
-    // ── 2. Event type filtering ───────────────────────────────────────────────
-    const eventType = req.headers["x-github-event"];
-    if (eventType !== "pull_request") {
-      res
-        .status(200)
-        .json({ skipped: true, reason: "not a pull_request event" });
+      sendWebhookContractResponse(res, 401, {
+        error: normalizeContractError("Invalid signature"),
+      });
       return;
     }
 
     // ── 3. Parse payload ──────────────────────────────────────────────────────
-    let payload: PullRequestEvent;
-    try {
-      payload = JSON.parse(body.toString("utf8")) as PullRequestEvent;
-    } catch {
-      res.status(400).json({ error: "Invalid JSON payload" });
-      return;
-    }
+    const payload = contractValidation.payload as unknown as PullRequestEvent;
 
     // ── 4. Merged PR check ────────────────────────────────────────────────────
     if (payload.action !== "closed" || !payload.pull_request.merged) {
-      res.status(200).json({ skipped: true, reason: "PR not merged" });
+      sendWebhookContractResponse(res, 200, {
+        skipped: true,
+        reason: "PR not merged",
+      });
       return;
     }
 
@@ -65,13 +71,16 @@ webhookRouter.post(
     if (typeof deliveryId === "string") {
       const startResult = startDelivery(deliveryId);
       if (startResult === "duplicate") {
-        res.status(200).json({ skipped: true, reason: "duplicate delivery" });
+        sendWebhookContractResponse(res, 200, {
+          skipped: true,
+          reason: "duplicate delivery",
+        });
         return;
       }
     }
 
     // Acknowledge immediately — GitHub expects a timely 2xx response
-    res.status(202).json({ accepted: true });
+    sendWebhookContractResponse(res, 202, { accepted: true });
 
     // ── 6. Async processing (non-blocking) ────────────────────────────────────
     processMergedPr(payload)

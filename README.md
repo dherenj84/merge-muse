@@ -40,6 +40,68 @@ Local development uses [.nvmrc](.nvmrc) and the container images in [Dockerfile]
 
 - `POST /webhook`: GitHub App webhook receiver
 - `GET /health`: basic health check
+- `GET /openapi.json`: OpenAPI 3.0.0 spec (generated via `tsoa`)
+
+## OpenAPI Contract Compliance
+
+MergeMuse supports OpenAPI contract compliance at runtime, not only documentation-time generation.
+
+- The webhook contract is generated to `openapi/swagger.json` and served at `GET /openapi.json`.
+- The webhook handler enforces request constraints from the generated OpenAPI schema (headers, media type, and request body schema constraints).
+- Outbound webhook responses are validated against documented response schemas before being returned.
+- Startup is fail-fast: the service will not boot if the generated OpenAPI webhook contract is unavailable.
+
+This helps ensure real API behavior stays aligned with the published contract used by compliance and security scanners.
+
+### Server URL in OpenAPI
+
+When you deploy MergeMuse, set the OpenAPI `servers[0].url` value to your real public HTTPS endpoint (for example `https://merge-muse.yourcompany.com/`).
+
+Do not leave placeholder/demo values in published artifacts when running compliance scans.
+
+Before scanning, confirm the generated [openapi/swagger.json](openapi/swagger.json) contains your deployed host in `servers` and regenerate if needed (`npm run openapi:gen`).
+
+### OpenAPI Source Of Truth (Do Not Edit Generated Spec)
+
+Do not manually edit [openapi/swagger.json](openapi/swagger.json). It is generated and will be overwritten.
+
+Update these files instead:
+
+- Server URL template: [tsoa.json](tsoa.json) under `spec.servers`.
+- Security scheme definition: [tsoa.json](tsoa.json) under `spec.securityDefinitions`.
+- Operation-level security usage, request/response schemas, headers, and examples: [src/http/webhook.controller.ts](src/http/webhook.controller.ts).
+- Post-generation fixes (header schema constraints and server-url normalization): [scripts/patch-openapi.mjs](scripts/patch-openapi.mjs).
+
+Generation flow:
+
+1. `tsoa spec` generates [openapi/swagger.json](openapi/swagger.json) from [tsoa.json](tsoa.json) and [src/http/webhook.controller.ts](src/http/webhook.controller.ts).
+2. [scripts/patch-openapi.mjs](scripts/patch-openapi.mjs) applies compatibility patches.
+
+After any change to contract inputs, run `npm run openapi:gen` (or `npm run build`) before scanning.
+
+### Security Scheme Note
+
+The current OpenAPI security scheme in this repository is configured as HTTP Bearer for demonstration and scanner compatibility.
+
+You should configure your own security scheme to match your deployment and threat model, following OpenAPI Security Scheme and Security Requirement objects.
+
+Typical webhook deployments use signature verification with strict transport controls, but implementation choices vary by environment. Keep your documented scheme, runtime enforcement, and gateway/infrastructure controls consistent.
+
+If you customize the security scheme, update [tsoa.json](tsoa.json), regenerate the spec (`npm run openapi:gen`), and re-run your compliance scan.
+
+## Self-Hosted Onboarding
+
+For customer orgs using MergeMuse in self-hosted mode, the cleanest rollout is:
+
+1. Deploy MergeMuse first and get a stable HTTPS URL.
+2. Create a GitHub App in the customer org/account.
+3. Set the app webhook URL to `https://<their-host>/webhook`.
+4. Configure app permissions and subscribe to `pull_request` webhooks.
+5. Generate the app private key and configure runtime secrets/env vars.
+6. Install the app on selected repositories (single repo, subset, or all repos).
+7. Merge a test PR and validate logs/audit output.
+
+Why this order: the webhook URL and credentials belong to the customer's own deployment and org, and there is no shared control plane.
 
 ## GitHub App Requirements
 
@@ -353,6 +415,28 @@ tests/        fixtures and unit tests
 - Only merged `pull_request` events are processed.
 - Model output is validated before being applied.
 - Basic secret-pattern detection prevents obvious credential leakage into generated PR text.
+
+## Compliance And API Governance
+
+MergeMuse exposes a machine-readable OpenAPI document at `GET /openapi.json`.
+
+The spec is generated from typed `tsoa` controllers and refreshed whenever you run:
+
+- `npm run openapi:gen`
+- `npm run build` (includes OpenAPI generation)
+- `npm run dev` (includes OpenAPI generation)
+
+This is useful for:
+
+- API inventory/compliance tooling in customer CI/CD
+- Security gateways that require an OpenAPI contract
+- Internal review workflows that validate webhook endpoint shape
+
+Example:
+
+```bash
+curl -fsSL https://<your-mergemuse-host>/openapi.json | jq '.openapi, .paths["/webhook"]'
+```
 
 ## Current Limitations
 
