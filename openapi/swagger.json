@@ -1,0 +1,518 @@
+{
+	"openapi": "3.0.0",
+	"components": {
+		"examples": {},
+		"headers": {},
+		"parameters": {},
+		"requestBodies": {},
+		"responses": {},
+		"schemas": {
+			"AcceptedResponse": {
+				"description": "Webhook accepted response payload.",
+				"properties": {
+					"accepted": {
+						"type": "boolean",
+						"enum": [
+							true
+						],
+						"nullable": false,
+						"description": "Indicates the webhook was accepted for async processing.",
+						"example": true
+					}
+				},
+				"required": [
+					"accepted"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"SkippedResponse": {
+				"description": "Webhook skipped response payload.",
+				"properties": {
+					"skipped": {
+						"type": "boolean",
+						"enum": [
+							true
+						],
+						"nullable": false,
+						"description": "Indicates this delivery was intentionally skipped.",
+						"example": true
+					},
+					"reason": {
+						"type": "string",
+						"description": "Human-readable skip reason.",
+						"example": "duplicate delivery",
+						"pattern": "^[\\x20-\\x7E]{1,256}$",
+						"maxLength": 256
+					}
+				},
+				"required": [
+					"skipped",
+					"reason"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"ErrorResponse": {
+				"description": "Error response payload.",
+				"properties": {
+					"error": {
+						"type": "string",
+						"description": "Error message.",
+						"example": "Invalid signature",
+						"pattern": "^[\\x20-\\x7E]{1,512}$",
+						"minLength": 1,
+						"maxLength": 512
+					}
+				},
+				"required": [
+					"error"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubEventType": {
+				"type": "string",
+				"enum": [
+					"pull_request"
+				],
+				"nullable": false,
+				"description": "Supported GitHub webhook event header values for this endpoint."
+			},
+			"GithubPullRequestAction": {
+				"type": "string",
+				"enum": [
+					"assigned",
+					"unassigned",
+					"labeled",
+					"unlabeled",
+					"opened",
+					"edited",
+					"closed",
+					"reopened",
+					"synchronize",
+					"ready_for_review",
+					"locked",
+					"unlocked",
+					"review_requested",
+					"review_request_removed",
+					"converted_to_draft",
+					"auto_merge_enabled",
+					"auto_merge_disabled"
+				],
+				"description": "Supported GitHub pull_request action values."
+			},
+			"GithubInstallation": {
+				"properties": {
+					"id": {
+						"type": "number",
+						"format": "double",
+						"description": "GitHub App installation identifier.",
+						"example": 123456789,
+						"minimum": 1,
+						"maximum": 9999999999
+					}
+				},
+				"required": [
+					"id"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubPullRequestRef": {
+				"properties": {
+					"ref": {
+						"type": "string",
+						"description": "Branch name.",
+						"example": "main",
+						"pattern": "^[A-Za-z0-9._/\\-]{1,255}$",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"sha": {
+						"type": "string",
+						"description": "Commit SHA of the branch reference.",
+						"example": "abc123def456",
+						"pattern": "^[A-Fa-f0-9]{7,64}$"
+					}
+				},
+				"required": [
+					"ref",
+					"sha"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubPullRequestHead": {
+				"properties": {
+					"sha": {
+						"type": "string",
+						"description": "Head commit SHA.",
+						"example": "ff0011aa22bb",
+						"pattern": "^[A-Fa-f0-9]{7,64}$"
+					}
+				},
+				"required": [
+					"sha"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubPullRequest": {
+				"properties": {
+					"number": {
+						"type": "number",
+						"format": "double",
+						"description": "Pull request number.",
+						"example": 42,
+						"minimum": 1,
+						"maximum": 2147483647
+					},
+					"merged": {
+						"type": "boolean",
+						"description": "Whether the PR is merged.",
+						"example": true
+					},
+					"title": {
+						"type": "string",
+						"description": "Pull request title.",
+						"example": "fix: handle webhook retry failures",
+						"pattern": "^[^\\x00-\\x08\\x0E-\\x1F\\x7F]{1,256}$",
+						"minLength": 1,
+						"maxLength": 256
+					},
+					"body": {
+						"type": "string",
+						"nullable": true,
+						"description": "Pull request body/description.",
+						"example": "## Summary\n- add bounded retries",
+						"pattern": "^[^\\x00-\\x08\\x0E-\\x1F\\x7F]{0,65535}$",
+						"maxLength": 65535
+					},
+					"base": {
+						"$ref": "#/components/schemas/GithubPullRequestRef",
+						"description": "Base branch reference."
+					},
+					"head": {
+						"$ref": "#/components/schemas/GithubPullRequestHead",
+						"description": "Head branch reference."
+					},
+					"merge_commit_sha": {
+						"type": "string",
+						"nullable": true,
+						"description": "Merge commit SHA if merged.",
+						"example": "d34db33f",
+						"pattern": "^[A-Fa-f0-9]{7,64}$"
+					},
+					"html_url": {
+						"type": "string",
+						"description": "Browser URL for the pull request.",
+						"example": "https://github.com/acme/repo/pull/42",
+						"format": "uri",
+						"pattern": "^https?://[^\\s]{1,2046}$",
+						"maxLength": 2048
+					}
+				},
+				"required": [
+					"number",
+					"merged",
+					"title",
+					"body",
+					"base",
+					"head",
+					"merge_commit_sha",
+					"html_url"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubRepositoryOwner": {
+				"properties": {
+					"login": {
+						"type": "string",
+						"description": "Repository owner login.",
+						"example": "acme-org",
+						"pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$"
+					}
+				},
+				"required": [
+					"login"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubRepository": {
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "Repository name.",
+						"example": "merge-muse",
+						"pattern": "^[A-Za-z0-9._-]{1,100}$",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"full_name": {
+						"type": "string",
+						"description": "Full repository name.",
+						"example": "acme-org/merge-muse",
+						"pattern": "^[^/\\s]+/[^/\\s]+$",
+						"minLength": 3,
+						"maxLength": 200
+					},
+					"owner": {
+						"$ref": "#/components/schemas/GithubRepositoryOwner",
+						"description": "Repository owner object."
+					},
+					"default_branch": {
+						"type": "string",
+						"description": "Default branch name.",
+						"example": "main",
+						"pattern": "^[A-Za-z0-9._/\\-]{1,255}$",
+						"minLength": 1,
+						"maxLength": 255
+					}
+				},
+				"required": [
+					"name",
+					"full_name",
+					"owner",
+					"default_branch"
+				],
+				"type": "object",
+				"additionalProperties": false
+			},
+			"GithubPullRequestEventPayload": {
+				"description": "Subset of GitHub pull_request webhook payload used by MergeMuse.",
+				"properties": {
+					"action": {
+						"$ref": "#/components/schemas/GithubPullRequestAction",
+						"description": "Webhook action.",
+						"example": "closed"
+					},
+					"number": {
+						"type": "number",
+						"format": "double",
+						"description": "Pull request number from payload root.",
+						"example": 42,
+						"minimum": 1,
+						"maximum": 2147483647
+					},
+					"installation": {
+						"$ref": "#/components/schemas/GithubInstallation",
+						"description": "Installation context for this webhook delivery."
+					},
+					"pull_request": {
+						"$ref": "#/components/schemas/GithubPullRequest",
+						"description": "Pull request payload."
+					},
+					"repository": {
+						"$ref": "#/components/schemas/GithubRepository",
+						"description": "Repository payload."
+					}
+				},
+				"required": [
+					"action",
+					"number",
+					"installation",
+					"pull_request",
+					"repository"
+				],
+				"type": "object",
+				"additionalProperties": false
+			}
+		},
+		"securitySchemes": {
+			"ApiKeyAuth": {
+				"type": "apiKey",
+				"in": "header",
+				"name": "x-hub-signature-256",
+				"description": "Inbound webhook signature verification is enforced via X-Hub-Signature-256."
+			}
+		}
+	},
+	"info": {
+		"title": "merge-muse",
+		"version": "0.1.0",
+		"description": "Open-source self-hosted GitHub App that reviews merged PR titles and bodies against code changes and rewrites them using an LLM.",
+		"license": {
+			"name": "MIT"
+		},
+		"contact": {}
+	},
+	"paths": {
+		"/webhook": {
+			"post": {
+				"operationId": "ReceiveWebhook",
+				"responses": {
+					"200": {
+						"description": "Skipped event",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SkippedResponse"
+								}
+							}
+						}
+					},
+					"202": {
+						"description": "Accepted for async processing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AcceptedResponse"
+								},
+								"examples": {
+									"Example 1": {
+										"value": {
+											"accepted": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Invalid signature",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"405": {
+						"description": "Method not allowed",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"406": {
+						"description": "Not acceptable",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Unsupported media type",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"default": {
+						"description": "Unexpected error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"description": "Receives GitHub pull_request webhook deliveries for async processing.",
+				"tags": [
+					"Webhook"
+				],
+				"security": [
+					{
+						"ApiKeyAuth": []
+					}
+				],
+				"parameters": [
+					{
+						"description": "HMAC signature generated by GitHub using the configured webhook secret.",
+						"in": "header",
+						"name": "x-hub-signature-256",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"pattern": "^sha256=[a-f0-9]{64}$",
+							"maxLength": 71
+						}
+					},
+					{
+						"description": "GitHub webhook event type.",
+						"in": "header",
+						"name": "x-github-event",
+						"required": true,
+						"schema": {
+							"$ref": "#/components/schemas/GithubEventType"
+						}
+					},
+					{
+						"description": "Unique GitHub webhook delivery identifier.",
+						"in": "header",
+						"name": "x-github-delivery",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"pattern": "^[0-9a-fA-F-]{36,128}$",
+							"maxLength": 128
+						}
+					}
+				],
+				"requestBody": {
+					"description": "GitHub pull_request webhook payload.",
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/GithubPullRequestEventPayload",
+								"description": "GitHub pull_request webhook payload."
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	"servers": [
+		{
+			"url": "https://mergemuse.example.com/",
+			"description": "Self-hosted MergeMuse deployment (HTTPS only)"
+		}
+	]
+}

@@ -1,0 +1,30 @@
+{
+  "entryFile": "src/index.ts",
+  "noImplicitAdditionalProperties": "throw-on-extras",
+  "controllerPathGlobs": ["src/http/*.controller.ts"],
+  "spec": {
+    "outputDirectory": "openapi",
+    "specVersion": 3,
+    "basePath": "/",
+    "servers": [
+      {
+        "url": "https://{host}",
+        "description": "Self-hosted MergeMuse deployment (HTTPS only)",
+        "variables": {
+          "host": {
+            "default": "mergemuse.example.com",
+            "description": "Hostname of your deployed MergeMuse instance"
+          }
+        }
+      }
+    ],
+    "securityDefinitions": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-hub-signature-256",
+        "description": "Inbound webhook signature verification is enforced via X-Hub-Signature-256."
+      }
+    }
+  }
+}

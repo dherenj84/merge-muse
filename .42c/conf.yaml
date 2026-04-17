@@ -1,0 +1,3 @@
+apis:
+  openapi/swagger.json:
+    alias: merge-muse

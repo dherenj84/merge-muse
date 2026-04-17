@@ -6,9 +6,10 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "openapi:gen": "tsoa spec && node scripts/patch-openapi.mjs",
+    "build": "npm run openapi:gen && tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "dev": "npm run openapi:gen && ts-node src/index.ts",
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
@@ -33,6 +34,7 @@
     "jest": "^29.7.0",
     "ts-jest": "^29.1.5",
     "ts-node": "^10.9.2",
+    "tsoa": "^7.0.0-alpha.0",
     "typescript": "^5.5.4"
   },
   "jest": {
