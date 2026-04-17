@@ -68,9 +68,17 @@ type RequestValidationResult =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; reason: ContractError };
 
+type RequestValidationOptions = {
+  allowAdditionalRequestProperties?: boolean;
+};
+
 type ContractContext = {
   operation: Operation;
   schemas: Record<string, Schema>;
+};
+
+type ValidationOptions = {
+  allowAdditionalObjectProperties: boolean;
 };
 
 const OPENAPI_SPEC_PATH = path.resolve(
@@ -151,6 +159,7 @@ function validateValueAgainstSchema(
   schema: Schema,
   schemas: Record<string, Schema>,
   atPath: string,
+  options: ValidationOptions,
 ): string | null {
   const resolved = resolveSchema(schema, schemas);
   if (!resolved) {
@@ -257,9 +266,6 @@ function validateValueAgainstSchema(
         const childSchema = properties[key];
 
         if (!childSchema) {
-          if (resolved.additionalProperties === false) {
-            return `Unexpected property ${atPath}.${key}`;
-          }
           continue;
         }
 
@@ -268,9 +274,20 @@ function validateValueAgainstSchema(
           childSchema,
           schemas,
           `${atPath}.${key}`,
+          options,
         );
         if (childError) {
           return childError;
+        }
+      }
+
+      if (options.allowAdditionalObjectProperties) {
+        return null;
+      }
+
+      for (const key of Object.keys(objectValue)) {
+        if (!(key in properties) && resolved.additionalProperties === false) {
+          return `Unexpected property ${atPath}.${key}`;
         }
       }
 
@@ -292,6 +309,7 @@ function validateValueAgainstSchema(
           resolved.items,
           schemas,
           `${atPath}[${index}]`,
+          options,
         );
         if (itemError) {
           return itemError;
@@ -349,6 +367,7 @@ function validateHeaderFromContract(
     schema,
     schemas,
     `header:${headerName}`,
+    { allowAdditionalObjectProperties: false },
   );
   return error;
 }
@@ -379,6 +398,7 @@ function getResponseSchemaForStatus(
 
 export function validateWebhookRequestAgainstContract(
   request: Request,
+  options?: RequestValidationOptions,
 ): RequestValidationResult {
   const contract = ensureContract();
   if (!contract) {
@@ -504,6 +524,10 @@ export function validateWebhookRequestAgainstContract(
     payloadSchema,
     schemas,
     "body",
+    {
+      allowAdditionalObjectProperties:
+        options?.allowAdditionalRequestProperties === true,
+    },
   );
   if (payloadValidationError) {
     return {
@@ -549,6 +573,7 @@ export function sendWebhookContractResponse(
     schema,
     contract.schemas,
     `response:${status}`,
+    { allowAdditionalObjectProperties: false },
   );
 
   if (!validationError) {
@@ -578,6 +603,7 @@ export function sendWebhookContractResponse(
       fallbackSchema,
       contract.schemas,
       "response:fallback",
+      { allowAdditionalObjectProperties: false },
     );
     if (!fallbackError) {
       response.status(500).json(fallback);

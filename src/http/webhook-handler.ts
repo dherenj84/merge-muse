@@ -14,6 +14,60 @@ export const webhookRouter = Router();
 // Parse raw body so we can verify the HMAC signature before touching contents
 webhookRouter.use(raw({ type: "application/json", limit: "25mb" }));
 
+function hasHookshotUserAgent(req: Request): boolean {
+  const userAgent = req.headers["user-agent"];
+  return (
+    typeof userAgent === "string" && userAgent.startsWith("GitHub-Hookshot/")
+  );
+}
+
+function hasValidWebhookSignature(req: Request):
+  | { ok: true }
+  | {
+      ok: false;
+      status: 400 | 401;
+      message: string;
+    } {
+  const sigHeader = req.headers["x-hub-signature-256"];
+  if (typeof sigHeader !== "string") {
+    return {
+      ok: false,
+      status: 400,
+      message: "Missing X-Hub-Signature-256",
+    };
+  }
+
+  if (!Buffer.isBuffer(req.body)) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Invalid request body",
+    };
+  }
+
+  const expected = `sha256=${createHmac("sha256", env.GITHUB_WEBHOOK_SECRET)
+    .update(req.body)
+    .digest("hex")}`;
+
+  try {
+    if (timingSafeEqual(Buffer.from(sigHeader), Buffer.from(expected))) {
+      return { ok: true };
+    }
+  } catch {
+    // Length mismatch throws. Treat as invalid signature.
+  }
+
+  return {
+    ok: false,
+    status: 401,
+    message: "Invalid signature",
+  };
+}
+
+function isAdditionalPropertyContractError(error: string): boolean {
+  return error.startsWith("Unexpected property body.");
+}
+
 function sendMethodNotAllowed(res: Response): void {
   res.setHeader("Allow", "POST");
   sendWebhookContractResponse(res, 405, {
@@ -24,8 +78,33 @@ function sendMethodNotAllowed(res: Response): void {
 webhookRouter.post(
   "/webhook",
   async (req: Request, res: Response): Promise<void> => {
-    // ── 0. Contract validation (request shape from OpenAPI) ─────────────────
-    const contractValidation = validateWebhookRequestAgainstContract(req);
+    // ── 0. Contract validation (strict by default) ──────────────────────────
+    let signatureVerified = false;
+    let contractValidation = validateWebhookRequestAgainstContract(req, {
+      allowAdditionalRequestProperties: false,
+    });
+
+    // Allow additional payload fields only for real GitHub Hookshot traffic
+    // that has already proven possession of the shared webhook secret.
+    if (
+      !contractValidation.ok &&
+      isAdditionalPropertyContractError(contractValidation.reason.error) &&
+      hasHookshotUserAgent(req)
+    ) {
+      const signatureCheck = hasValidWebhookSignature(req);
+      if (!signatureCheck.ok) {
+        sendWebhookContractResponse(res, signatureCheck.status, {
+          error: normalizeContractError(signatureCheck.message),
+        });
+        return;
+      }
+
+      signatureVerified = true;
+      contractValidation = validateWebhookRequestAgainstContract(req, {
+        allowAdditionalRequestProperties: true,
+      });
+    }
+
     if (!contractValidation.ok) {
       sendWebhookContractResponse(res, contractValidation.reason.status, {
         error: normalizeContractError(contractValidation.reason.error),
@@ -33,32 +112,15 @@ webhookRouter.post(
       return;
     }
 
-    // ── 1. Signature verification ─────────────────────────────────────────────
-    const sigHeader = req.headers["x-hub-signature-256"];
-    if (typeof sigHeader !== "string") {
-      sendWebhookContractResponse(res, 400, {
-        error: normalizeContractError("Missing X-Hub-Signature-256"),
-      });
-      return;
-    }
-
-    const body = req.body as Buffer;
-    const expected = `sha256=${createHmac("sha256", env.GITHUB_WEBHOOK_SECRET)
-      .update(body)
-      .digest("hex")}`;
-
-    let sigMatch = false;
-    try {
-      sigMatch = timingSafeEqual(Buffer.from(sigHeader), Buffer.from(expected));
-    } catch {
-      // Length mismatch — timingSafeEqual throws; treat as invalid
-    }
-
-    if (!sigMatch) {
-      sendWebhookContractResponse(res, 401, {
-        error: normalizeContractError("Invalid signature"),
-      });
-      return;
+    // ── 1. Signature verification ───────────────────────────────────────────
+    if (!signatureVerified) {
+      const signatureCheck = hasValidWebhookSignature(req);
+      if (!signatureCheck.ok) {
+        sendWebhookContractResponse(res, signatureCheck.status, {
+          error: normalizeContractError(signatureCheck.message),
+        });
+        return;
+      }
     }
 
     // ── 3. Parse payload ──────────────────────────────────────────────────────
