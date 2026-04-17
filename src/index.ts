@@ -12,6 +12,7 @@ assertWebhookContractAvailable();
 
 const app = express();
 
+// Keep routes centralized in this entrypoint for predictable webhook startup.
 const OPENAPI_SPEC_PATH = path.resolve(
   process.cwd(),
   "openapi",
