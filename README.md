@@ -388,6 +388,10 @@ npm run build
 
 The repository also includes a Node 24 CI workflow in [.github/workflows/ci.yml](.github/workflows/ci.yml) that runs `npm ci`, `npm test`, and `npm run build` on pushes to `main` and on pull requests.
 
+The CI workflow currently runs on pull requests and skips docs-only changes via `paths-ignore`.
+
+This repository also includes a CodeQL workflow in [.github/workflows/codeql.yml](.github/workflows/codeql.yml) for security and quality analysis on `main` pushes, pull requests, and a weekly schedule.
+
 Current project status:
 
 - Unit tests are present for diff normalization, rewrite validation, repo settings, and delivery deduplication.
@@ -447,6 +451,22 @@ curl -fsSL https://<your-mergemuse-host>/openapi.json | jq '.openapi, .paths["/w
 - Deduplication is per-process rather than shared across replicas.
 - There is no persistent audit store beyond container/process logs.
 - The rewrite quality is only as good as the supplied diff and model.
+
+## Release Checklist
+
+Use this checklist for each new release:
+
+1. Ensure tests and build pass:
+  - `npm test`
+  - `npm run build`
+2. Bump version in [package.json](package.json) (semantic versioning).
+3. Commit and push the version bump to `main`.
+4. Create a tag that matches the package version:
+  - `git tag vX.Y.Z`
+  - `git push origin vX.Y.Z`
+5. Publish the GitHub release:
+  - `gh release create vX.Y.Z --target main --title "vX.Y.Z" --notes "<release notes>"`
+6. Verify the release page and linked tag in GitHub.
 
 ## License
 
