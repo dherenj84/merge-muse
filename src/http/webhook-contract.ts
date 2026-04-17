@@ -130,7 +130,7 @@ export function assertWebhookContractAvailable(): void {
   }
 
   throw new Error(
-    `OpenAPI webhook contract is unavailable at ${OPENAPI_SPEC_PATH}. Run \"npm run openapi:gen\" before starting the service.`,
+    `OpenAPI webhook contract is unavailable at ${OPENAPI_SPEC_PATH}. Run "npm run openapi:gen" before starting the service.`,
   );
 }
 
