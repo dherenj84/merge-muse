@@ -81,7 +81,7 @@ After any change to contract inputs, run `npm run openapi:gen` (or `npm run buil
 
 ### Security Scheme Note
 
-The current OpenAPI security scheme in this repository is configured as HTTP Bearer for demonstration and scanner compatibility.
+The current OpenAPI security scheme in this repository is configured as API key auth via the `x-hub-signature-256` header.
 
 You should configure your own security scheme to match your deployment and threat model, following OpenAPI Security Scheme and Security Requirement objects.
 
