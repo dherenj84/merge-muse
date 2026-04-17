@@ -451,3 +451,5 @@ curl -fsSL https://<your-mergemuse-host>/openapi.json | jq '.openapi, .paths["/w
 ## License
 
 MIT
+
+_CI trigger validation note: this line was added to test docs-only workflow behavior._
