@@ -57,7 +57,11 @@ describe("getProxiedFetch", () => {
       "http://proxy.corp.example.com:3128",
     );
 
-    await proxiedFetch!("https://api.github.com/app", {
+    if (!proxiedFetch) {
+      throw new Error("Expected proxiedFetch to be defined");
+    }
+
+    await proxiedFetch("https://api.github.com/app", {
       method: "GET",
     });
 

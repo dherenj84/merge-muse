@@ -17,16 +17,10 @@ function getProxyAgent(): ProxyAgent | null {
  * requests. Do NOT apply to LLM endpoint calls — the LLM is assumed to be
  * reachable on the internal enterprise network without a proxy.
  */
-export function getProxiedFetch():
-  | ((url: string | URL | Request, init?: RequestInit) => Promise<Response>)
-  | undefined {
+export function getProxiedFetch(): typeof undiciFetch | undefined {
   const agent = getProxyAgent();
   if (!agent) return undefined;
-  return (url, init) =>
-    undiciFetch(url as Parameters<typeof undiciFetch>[0], {
-      ...(init as Parameters<typeof undiciFetch>[1]),
-      dispatcher: agent,
-    }) as Promise<Response>;
+  return (url, init) => undiciFetch(url, { ...init, dispatcher: agent });
 }
 
 /** Resets the cached proxy agent. Used in tests only. */
