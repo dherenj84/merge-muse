@@ -2,12 +2,15 @@ import express from "express";
 import * as fs from "fs";
 import * as path from "path";
 import { loadEnv } from "./config/env";
+import { configureProxy } from "./config/proxy";
 import { webhookRouter } from "./http/webhook-handler";
 import { assertWebhookContractAvailable } from "./http/webhook-contract";
 
 // Validate and load all required environment variables at startup.
 // Throws with a descriptive message if any required var is missing.
 loadEnv();
+// Route all outbound connections through the proxy when HTTPS_PROXY is set.
+configureProxy();
 assertWebhookContractAvailable();
 
 const app = express();
