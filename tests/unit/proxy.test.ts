@@ -1,3 +1,5 @@
+export {};
+
 const BASE_ENV = { ...process.env };
 
 function applyRequiredBaseEnv(): void {
