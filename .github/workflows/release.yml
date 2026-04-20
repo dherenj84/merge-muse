@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".gitignore"
+      - ".editorconfig"
+      - "LICENSE"
+      - "LICENSE.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          if git describe --tags --abbrev=0 2>/dev/null; then
+            LATEST_TAG=$(git describe --tags --abbrev=0)
+            HAS_TAG="true"
+          else
+            LATEST_TAG="v0.0.0"
+            HAS_TAG="false"
+          fi
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "has_tag=$HAS_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check for new commits since last tag
+        id: check_commits
+        run: |
+          HAS_TAG="${{ steps.get_tag.outputs.has_tag }}"
+          LATEST_TAG="${{ steps.get_tag.outputs.tag }}"
+
+          if [ "$HAS_TAG" = "true" ]; then
+            COUNT=$(git rev-list "${LATEST_TAG}..HEAD" --count)
+          else
+            COUNT=$(git rev-list HEAD --count)
+          fi
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Determine version bump
+        id: bump
+        if: steps.check_commits.outputs.count != '0'
+        run: |
+          HAS_TAG="${{ steps.get_tag.outputs.has_tag }}"
+          LATEST_TAG="${{ steps.get_tag.outputs.tag }}"
+          BUMP="patch"
+          # All conventional commit types — used to detect breaking changes (type!:) across any type
+          TYPES="feat|fix|refactor|perf|docs|ci|chore|test|build"
+
+          if [ "$HAS_TAG" = "true" ]; then
+            LOG_RANGE="${LATEST_TAG}..HEAD"
+          else
+            LOG_RANGE="HEAD"
+          fi
+
+          # Scan commit subjects for conventional commit type markers
+          while IFS= read -r subject; do
+            if echo "$subject" | grep -qE "^(${TYPES})(\(.+\))?!:"; then
+              BUMP="major"
+              break
+            elif echo "$subject" | grep -qE "^feat(\(.+\))?:"; then
+              if [ "$BUMP" != "major" ]; then
+                BUMP="minor"
+              fi
+            fi
+          done < <(git log "$LOG_RANGE" --format="%s")
+
+          # Scan full commit bodies for BREAKING CHANGE or BREAKING-CHANGE footer (per spec: at start of line)
+          if [ "$BUMP" != "major" ]; then
+            if git log "$LOG_RANGE" --format="%B" | grep -qE "^BREAKING[- ]CHANGE:"; then
+              BUMP="major"
+            fi
+          fi
+
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+
+      - name: Compute next version
+        id: next_version
+        if: steps.check_commits.outputs.count != '0'
+        run: |
+          LATEST_TAG="${{ steps.get_tag.outputs.tag }}"
+          BUMP="${{ steps.bump.outputs.bump }}"
+
+          VERSION="${LATEST_TAG#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+          if [ "$BUMP" = "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$BUMP" = "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEXT="v${MAJOR}.${MINOR}.${PATCH}"
+
+          # Skip if this version tag already exists (e.g. workflow re-run)
+          if git rev-parse "$NEXT" >/dev/null 2>&1; then
+            echo "::warning::Tag $NEXT already exists — skipping release creation."
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release notes
+        id: notes
+        if: steps.next_version.outputs.version != ''
+        run: |
+          HAS_TAG="${{ steps.get_tag.outputs.has_tag }}"
+          LATEST_TAG="${{ steps.get_tag.outputs.tag }}"
+
+          if [ "$HAS_TAG" = "true" ]; then
+            LOG_RANGE="${LATEST_TAG}..HEAD"
+          else
+            LOG_RANGE="HEAD"
+          fi
+
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            git log "$LOG_RANGE" --pretty=format:"- %s (%h)"
+            echo ""
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and GitHub release
+        if: steps.next_version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.next_version.outputs.version }}" \
+            --title "${{ steps.next_version.outputs.version }}" \
+            --notes "${{ steps.notes.outputs.notes }}"
