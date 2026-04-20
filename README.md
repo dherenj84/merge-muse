@@ -158,6 +158,7 @@ Important optional variables:
 - `DIFF_MAX_FILE_BYTES` default: `50000`
 - `DIFF_MAX_FILES` default: `100`
 - `GITHUB_API_URL` for GitHub Enterprise Server
+- `HTTPS_PROXY` optional proxy URL for all outbound connections (GitHub API + LLM)
 - `LOCAL_MOCK_MODE` default: disabled (`true` enables local synthetic GitHub data path)
 
 ### LLM Auth Modes
@@ -179,6 +180,21 @@ For `entra_client_credentials`, configure:
 Optional:
 
 - `LLM_ENTRA_REFRESH_SKEW_SECONDS` default: `120`
+
+### Corporate Proxy
+
+In environments where egress is restricted (for example a cloud environment that
+requires outbound traffic to pass through a corporate proxy), set `HTTPS_PROXY`
+to route all outbound connections through your proxy:
+
+```
+HTTPS_PROXY=http://proxy.corp.example.com:3128
+```
+
+This single variable covers every outbound connection the app makes:
+
+- GitHub API calls used for GitHub App authentication and PR data fetching
+- LLM endpoint calls (including any Entra OAuth token requests)
 
 ### Private Key Formats
 

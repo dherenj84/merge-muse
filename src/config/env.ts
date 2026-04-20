@@ -51,6 +51,9 @@ const envSchema = z.object({
   // Optional: GitHub API base URL (for GHES)
   GITHUB_API_URL: z.string().url().optional(),
 
+  // Optional: HTTPS proxy URL for all outbound connections (GitHub API + LLM endpoint)
+  HTTPS_PROXY: z.string().url().optional(),
+
   // Optional: local development mode for webhook->LLM pipeline without GitHub API fetch/apply
   LOCAL_MOCK_MODE: z.enum(["true", "false"]).optional(),
 });
