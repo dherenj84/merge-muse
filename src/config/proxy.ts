@@ -1,20 +1,35 @@
-import { ProxyAgent, setGlobalDispatcher } from "undici";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { env } from "./env";
 
-/**
- * Configures a global undici ProxyAgent when HTTPS_PROXY is set.
- *
- * Because Node.js's native fetch is powered by undici, setting the global
- * dispatcher routes all outbound fetch calls — including those made by Octokit
- * for GitHub API authentication and by the LLM client — through the proxy.
- *
- * This must be called once at startup, before any outbound connections are made.
- */
-export function configureProxy(): void {
-  if (!env.HTTPS_PROXY) {
-    return;
-  }
+let _agent: ProxyAgent | null = null;
 
-  const agent = new ProxyAgent(env.HTTPS_PROXY);
-  setGlobalDispatcher(agent);
+function getProxyAgent(): ProxyAgent | null {
+  if (!env.HTTPS_PROXY) return null;
+  if (!_agent) _agent = new ProxyAgent(env.HTTPS_PROXY);
+  return _agent;
+}
+
+/**
+ * Returns a fetch function that routes requests through the configured
+ * HTTPS proxy, or undefined when HTTPS_PROXY is not set.
+ *
+ * Apply this to GitHub API calls (App auth + Octokit) and Entra OAuth token
+ * requests. Do NOT apply to LLM endpoint calls — the LLM is assumed to be
+ * reachable on the internal enterprise network without a proxy.
+ */
+export function getProxiedFetch():
+  | ((url: string | URL | Request, init?: RequestInit) => Promise<Response>)
+  | undefined {
+  const agent = getProxyAgent();
+  if (!agent) return undefined;
+  return (url, init) =>
+    undiciFetch(url as Parameters<typeof undiciFetch>[0], {
+      ...(init as Parameters<typeof undiciFetch>[1]),
+      dispatcher: agent,
+    }) as Promise<Response>;
+}
+
+/** Resets the cached proxy agent. Used in tests only. */
+export function resetProxyAgentForTests(): void {
+  _agent = null;
 }

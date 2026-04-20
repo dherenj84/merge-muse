@@ -1,4 +1,5 @@
 import { getLlmSettings } from "../config/llm-settings";
+import { getProxiedFetch } from "../config/proxy";
 
 interface OAuthTokenResponse {
   access_token: string;
@@ -41,7 +42,8 @@ async function requestEntraToken(
     scope,
   });
 
-  const response = await fetch(tokenUrl, {
+  const proxiedFetch = getProxiedFetch() ?? fetch;
+  const response = await proxiedFetch(tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

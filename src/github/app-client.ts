@@ -1,6 +1,7 @@
 import type { App as GitHubApp } from "@octokit/app";
 import { Octokit } from "@octokit/rest";
 import { env } from "../config/env";
+import { getProxiedFetch } from "../config/proxy";
 
 let _app: GitHubApp | null = null;
 
@@ -14,18 +15,19 @@ async function importOctokitApp(): Promise<typeof import("@octokit/app")> {
 async function getApp(): Promise<GitHubApp> {
   if (!_app) {
     const { App } = await importOctokitApp();
+    const proxiedFetch = getProxiedFetch();
+    const octokitOverrides = {
+      ...(env.GITHUB_API_URL ? { baseUrl: env.GITHUB_API_URL } : {}),
+      ...(proxiedFetch ? { request: { fetch: proxiedFetch } } : {}),
+    };
     _app = new App({
       appId: env.GITHUB_APP_ID,
       privateKey: env.GITHUB_PRIVATE_KEY,
       webhooks: {
         secret: env.GITHUB_WEBHOOK_SECRET,
       },
-      ...(env.GITHUB_API_URL
-        ? {
-            Octokit: Octokit.defaults({
-              baseUrl: env.GITHUB_API_URL,
-            }),
-          }
+      ...(Object.keys(octokitOverrides).length > 0
+        ? { Octokit: Octokit.defaults(octokitOverrides) }
         : {}),
     });
   }
@@ -50,9 +52,11 @@ export async function getInstallationOctokit(
   const { token } = (await appOctokit.auth({ type: "installation" })) as {
     token: string;
   };
+  const proxiedFetch = getProxiedFetch();
   return new Octokit({
     auth: token,
     ...(env.GITHUB_API_URL ? { baseUrl: env.GITHUB_API_URL } : {}),
+    ...(proxiedFetch ? { request: { fetch: proxiedFetch } } : {}),
   });
 }
 

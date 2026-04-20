@@ -12,54 +12,82 @@ function applyRequiredBaseEnv(): void {
   process.env.DEFAULT_ACTION_MODE = "patch";
 }
 
-describe("configureProxy", () => {
+describe("getProxiedFetch", () => {
   afterEach(() => {
     process.env = { ...BASE_ENV };
     jest.resetModules();
     jest.restoreAllMocks();
   });
 
-  it("does not call setGlobalDispatcher when HTTPS_PROXY is not set", async () => {
+  it("returns undefined when HTTPS_PROXY is not set", async () => {
     process.env = { ...BASE_ENV };
     applyRequiredBaseEnv();
     delete process.env.HTTPS_PROXY;
 
-    const mockSetGlobalDispatcher = jest.fn();
     jest.mock("undici", () => ({
       ProxyAgent: jest.fn(),
-      setGlobalDispatcher: mockSetGlobalDispatcher,
+      fetch: jest.fn(),
     }));
 
-    const { configureProxy } = await import("../../src/config/proxy");
-    configureProxy();
-
-    expect(mockSetGlobalDispatcher).not.toHaveBeenCalled();
+    const { getProxiedFetch } = await import("../../src/config/proxy");
+    expect(getProxiedFetch()).toBeUndefined();
   });
 
-  it("calls setGlobalDispatcher with a ProxyAgent when HTTPS_PROXY is set", async () => {
+  it("returns a fetch function wrapping a ProxyAgent when HTTPS_PROXY is set", async () => {
     process.env = { ...BASE_ENV };
     applyRequiredBaseEnv();
     process.env.HTTPS_PROXY = "http://proxy.corp.example.com:3128";
 
-    const mockSetGlobalDispatcher = jest.fn();
+    const mockUndiciFetch = jest
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
     const MockProxyAgent = jest.fn().mockImplementation((url: string) => ({
       _url: url,
     }));
     jest.mock("undici", () => ({
       ProxyAgent: MockProxyAgent,
-      setGlobalDispatcher: mockSetGlobalDispatcher,
+      fetch: mockUndiciFetch,
     }));
 
-    const { configureProxy } = await import("../../src/config/proxy");
-    configureProxy();
+    const { getProxiedFetch } = await import("../../src/config/proxy");
+    const proxiedFetch = getProxiedFetch();
 
+    expect(proxiedFetch).toBeDefined();
     expect(MockProxyAgent).toHaveBeenCalledWith(
       "http://proxy.corp.example.com:3128",
     );
-    expect(mockSetGlobalDispatcher).toHaveBeenCalledTimes(1);
-    expect(mockSetGlobalDispatcher).toHaveBeenCalledWith(
-      expect.objectContaining({ _url: "http://proxy.corp.example.com:3128" }),
+
+    await proxiedFetch!("https://api.github.com/app", {
+      method: "GET",
+    });
+
+    expect(mockUndiciFetch).toHaveBeenCalledWith(
+      "https://api.github.com/app",
+      expect.objectContaining({
+        method: "GET",
+        dispatcher: expect.objectContaining({
+          _url: "http://proxy.corp.example.com:3128",
+        }),
+      }),
     );
+  });
+
+  it("returns the same ProxyAgent instance on repeated calls (singleton)", async () => {
+    process.env = { ...BASE_ENV };
+    applyRequiredBaseEnv();
+    process.env.HTTPS_PROXY = "http://proxy.internal:8080";
+
+    const MockProxyAgent = jest.fn().mockImplementation(() => ({}));
+    jest.mock("undici", () => ({
+      ProxyAgent: MockProxyAgent,
+      fetch: jest.fn(),
+    }));
+
+    const { getProxiedFetch } = await import("../../src/config/proxy");
+    getProxiedFetch();
+    getProxiedFetch();
+
+    expect(MockProxyAgent).toHaveBeenCalledTimes(1);
   });
 
   it("parses HTTPS_PROXY from the env schema correctly", async () => {
