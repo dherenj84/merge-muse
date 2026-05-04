@@ -1,5 +1,5 @@
 import { LlmResponse } from "../llm/openai-compatible-client";
-import { NormalizedDiff, FileCategory } from "./diff-normalizer";
+import { NormalizedDiff } from "./diff-normalizer";
 import { PrMetadata } from "./pr-fetch";
 
 export interface RewriteResult {
@@ -54,59 +54,20 @@ function parseLlmJson(
 
 function validateTitle(title: string): string | null {
   if (!title || title.trim().length === 0) return "title is empty";
-  if (title.length > 72)
-    return `title too long (${title.length} chars, max 72)`;
+  if (title.length > 256)
+    return `title too long (${title.length} chars, max 256)`;
   if (containsSecret(title)) return "title contains a potential secret";
   return null;
 }
 
 function validateBody(body: string): string | null {
-  if (body.length > 4000)
-    return `body too long (${body.length} chars, max 4000)`;
+  if (body.length > 65536)
+    return `body too long (${body.length} chars, max 65536)`;
   if (containsSecret(body)) return "body contains a potential secret";
   return null;
 }
 
 // --- Deterministic fallback ---
-
-function primaryScope(categories: FileCategory[]): string {
-  if (categories.length === 0) return "chore";
-  const counts = new Map<FileCategory, number>();
-  for (const c of categories) counts.set(c, (counts.get(c) ?? 0) + 1);
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  const dominant = sorted[0][0];
-  switch (dominant) {
-    case "source":
-      return "feat";
-    case "test":
-      return "test";
-    case "docs":
-      return "docs";
-    case "config":
-      return "chore";
-    case "infra":
-      return "ci";
-    default:
-      return "chore";
-  }
-}
-
-function buildFallbackTitle(
-  metadata: PrMetadata,
-  diff: NormalizedDiff,
-): string {
-  const scope = primaryScope(diff.fileCategories);
-  // Take the first 50 chars of the original title to keep context
-  const base = metadata.title
-    .replace(
-      /^(feat|fix|refactor|docs|chore|test|ci|perf)(\([^)]+\))?:?\s*/i,
-      "",
-    )
-    .trim();
-  const truncated = base.length > 50 ? base.slice(0, 47) + "..." : base;
-  const candidate = `${scope}: ${truncated}`;
-  return candidate.slice(0, 72);
-}
 
 function buildFallbackBody(metadata: PrMetadata, diff: NormalizedDiff): string {
   const lines: string[] = [
@@ -146,13 +107,16 @@ export function validateAndFallback(
   metadata: PrMetadata,
   diff: NormalizedDiff,
 ): RewriteResult {
+  // Original PR body used as fallback when available; generated summary otherwise.
+  const fallbackBody = metadata.body || buildFallbackBody(metadata, diff);
+
   if (llmResponse !== null) {
     const parsed = parseLlmJson(llmResponse.content);
 
     if (parsed === null) {
       return {
-        title: buildFallbackTitle(metadata, diff),
-        body: buildFallbackBody(metadata, diff),
+        title: metadata.title,
+        body: fallbackBody,
         usedLlm: false,
         rejectionReason:
           "LLM output was not valid JSON with title and body fields",
@@ -162,8 +126,8 @@ export function validateAndFallback(
     const titleError = validateTitle(parsed.title);
     if (titleError) {
       return {
-        title: buildFallbackTitle(metadata, diff),
-        body: buildFallbackBody(metadata, diff),
+        title: metadata.title,
+        body: fallbackBody,
         usedLlm: false,
         rejectionReason: `title validation failed: ${titleError}`,
       };
@@ -173,7 +137,7 @@ export function validateAndFallback(
     if (bodyError) {
       return {
         title: parsed.title,
-        body: buildFallbackBody(metadata, diff),
+        body: fallbackBody,
         usedLlm: false,
         rejectionReason: `body validation failed: ${bodyError}`,
       };
@@ -189,10 +153,10 @@ export function validateAndFallback(
     };
   }
 
-  // LLM call failed entirely — full fallback
+  // LLM call failed entirely — fall back to original PR content
   return {
-    title: buildFallbackTitle(metadata, diff),
-    body: buildFallbackBody(metadata, diff),
+    title: metadata.title,
+    body: fallbackBody,
     usedLlm: false,
     rejectionReason: "LLM call failed",
   };

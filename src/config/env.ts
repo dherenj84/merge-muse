@@ -30,7 +30,7 @@ const envSchema = z.object({
     .default(120),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   LLM_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(8000),
-  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(512),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
 
   // Default per-repo behaviour (overridable via .mergemuse.yml)
   DEFAULT_BASE_BRANCH: z.string().default("main"),
