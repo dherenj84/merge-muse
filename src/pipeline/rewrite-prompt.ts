@@ -15,7 +15,7 @@ Your task:
 3. Produce a rewritten title and body that precisely describe what code was changed and why, retaining any accurate and relevant details from the original.
 
 Rules for the title:
-- Maximum 72 characters.
+- Maximum 256 characters.
 - Must start with a conventional-commit type prefix (e.g. feat, fix, refactor, docs, chore, test, ci, perf) if the scope is clear.
 - Use imperative mood ("add", not "adds" or "added").
 - No trailing period.
@@ -26,7 +26,7 @@ Rules for the body:
 - Explain WHAT changed and WHY (if determinable from the diff).
 - Do NOT invent motivation you cannot infer from the code.
 - If the existing body contains useful context (e.g. motivation, linked issues, breaking-change notes, migration steps) that is consistent with the diff, retain or incorporate that information.
-- Maximum 4000 characters.
+- Maximum 65536 characters.
 
 Output format:
 Return ONLY a valid JSON object on a single line. Always include "title" and "body".

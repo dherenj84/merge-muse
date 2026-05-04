@@ -59,26 +59,31 @@ describe("validateAndFallback", () => {
     const result = validateAndFallback(response, metadata, diff);
     expect(result.usedLlm).toBe(false);
     expect(result.rejectionReason).toContain("not valid JSON");
+    expect(result.title).toBe(metadata.title);
+    expect(result.body).toBe(metadata.body);
   });
 
-  it("falls back when title exceeds 72 chars", () => {
-    const longTitle = "a".repeat(73);
+  it("falls back when title exceeds 256 chars", () => {
+    const longTitle = "a".repeat(257);
     const response = makeLlmResponse(
       JSON.stringify({ title: longTitle, body: "Fine body." }),
     );
     const result = validateAndFallback(response, metadata, diff);
     expect(result.usedLlm).toBe(false);
     expect(result.rejectionReason).toContain("title validation failed");
+    expect(result.title).toBe(metadata.title);
+    expect(result.body).toBe(metadata.body);
   });
 
-  it("uses fallback title but still returns when only body is rejected", () => {
-    const longBody = "b".repeat(4001);
+  it("uses original body as fallback when only body is rejected", () => {
+    const longBody = "b".repeat(65537);
     const response = makeLlmResponse(
       JSON.stringify({ title: "feat: valid title", body: longBody }),
     );
     const result = validateAndFallback(response, metadata, diff);
     expect(result.usedLlm).toBe(false);
     expect(result.title).toBe("feat: valid title");
+    expect(result.body).toBe(metadata.body);
     expect(result.rejectionReason).toContain("body validation failed");
   });
 
@@ -86,7 +91,17 @@ describe("validateAndFallback", () => {
     const result = validateAndFallback(null, metadata, diff);
     expect(result.usedLlm).toBe(false);
     expect(result.rejectionReason).toBe("LLM call failed");
-    expect(result.title.length).toBeLessThanOrEqual(72);
+    expect(result.title).toBe(metadata.title);
+    expect(result.body).toBe(metadata.body);
+  });
+
+  it("uses generated body fallback when llmResponse is null and original body is empty", () => {
+    const emptyBodyMetadata = { ...metadata, body: "" };
+    const result = validateAndFallback(null, emptyBodyMetadata, diff);
+    expect(result.usedLlm).toBe(false);
+    expect(result.rejectionReason).toBe("LLM call failed");
+    expect(result.title).toBe(emptyBodyMetadata.title);
+    expect(result.body).toContain("Auto-generated summary");
   });
 
   it("strips markdown code fences from LLM output", () => {
